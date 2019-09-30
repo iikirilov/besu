@@ -120,6 +120,9 @@ import org.hyperledger.besu.ethereum.p2p.network.P2PNetwork;
 import org.hyperledger.besu.ethereum.p2p.rlpx.wire.Capability;
 import org.hyperledger.besu.ethereum.permissioning.AccountLocalConfigPermissioningController;
 import org.hyperledger.besu.ethereum.permissioning.NodeLocalConfigPermissioningController;
+import org.hyperledger.besu.ethereum.privacy.ChainHeadPrivateNonceProvider;
+import org.hyperledger.besu.ethereum.privacy.PrivateNonceProvider;
+import org.hyperledger.besu.ethereum.privacy.PrivateStateRootResolver;
 import org.hyperledger.besu.ethereum.privacy.PrivateTransactionHandler;
 import org.hyperledger.besu.ethereum.privacy.markertransaction.FixedKeySigningPrivateMarkerTransactionFactory;
 import org.hyperledger.besu.ethereum.privacy.markertransaction.PrivateMarkerTransactionFactory;
@@ -359,16 +362,25 @@ public class JsonRpcMethodsFactory {
           createPrivateMarkerTransactionFactory(
               privacyParameters, blockchainQueries, transactionPool.getPendingTransactions());
 
+      final PrivateNonceProvider privateNonceProvider =
+          new ChainHeadPrivateNonceProvider(
+              blockchainQueries.getBlockchain(),
+              new PrivateStateRootResolver(privacyParameters.getPrivateStateStorage()),
+              privacyParameters.getPrivateWorldStateArchive());
+
       final PrivateTransactionHandler privateTransactionHandler =
           new PrivateTransactionHandler(
-              privacyParameters, protocolSchedule.getChainId(), markerTransactionFactory);
+              privacyParameters,
+              protocolSchedule.getChainId(),
+              markerTransactionFactory,
+              privateNonceProvider);
       final Enclave enclave = new Enclave(privacyParameters.getEnclaveUri());
       if (eea) {
         addMethods(
             enabledMethods,
             new EeaSendRawTransaction(privateTransactionHandler, transactionPool, parameter),
             new EeaGetTransactionCount(
-                parameter, new EeaPrivateNonceProvider(enclave, privateTransactionHandler)));
+                parameter, new EeaPrivateNonceProvider(enclave, privateNonceProvider)));
       }
       if (priv) {
         addMethods(
@@ -380,7 +392,7 @@ public class JsonRpcMethodsFactory {
                 new Enclave(privacyParameters.getEnclaveUri()), privacyParameters, parameter),
             new PrivFindPrivacyGroup(new Enclave(privacyParameters.getEnclaveUri()), parameter),
             new PrivGetPrivacyPrecompileAddress(privacyParameters),
-            new PrivGetTransactionCount(parameter, privateTransactionHandler),
+            new PrivGetTransactionCount(parameter, privateNonceProvider),
             new PrivGetPrivateTransaction(blockchainQueries, enclave, parameter, privacyParameters),
             new PrivDistributeRawTransaction(
                 privateTransactionHandler, transactionPool, parameter));

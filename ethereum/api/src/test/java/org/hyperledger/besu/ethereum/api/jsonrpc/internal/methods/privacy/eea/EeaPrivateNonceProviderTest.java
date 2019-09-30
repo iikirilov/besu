@@ -27,7 +27,9 @@ import org.hyperledger.besu.enclave.types.PrivacyGroup;
 import org.hyperledger.besu.enclave.types.PrivacyGroup.Type;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.privacy.methods.eea.EeaPrivateNonceProvider;
 import org.hyperledger.besu.ethereum.core.Address;
-import org.hyperledger.besu.ethereum.privacy.PrivateTransactionHandler;
+import org.hyperledger.besu.ethereum.privacy.PrivateNonceProvider;
+import org.hyperledger.besu.util.bytes.BytesValue;
+import org.hyperledger.besu.util.bytes.BytesValues;
 
 import com.google.common.collect.Lists;
 import org.junit.Test;
@@ -36,26 +38,32 @@ import org.mockito.ArgumentCaptor;
 public class EeaPrivateNonceProviderTest {
 
   private final Address address = Address.fromHexString("55");
+  private final BytesValue privacyGroup =
+      BytesValues.fromBase64("CNbkS6SftfGEROt/EPGIgEOMFQOqbgaey0UpGERTBzQ=");
   private Enclave enclave = mock(Enclave.class);
-  private PrivateTransactionHandler privateTransactionHandler =
-      mock(PrivateTransactionHandler.class);
+  private PrivateNonceProvider privateNonceProvider = mock(PrivateNonceProvider.class);
 
   private final EeaPrivateNonceProvider nonceProvider =
-      new EeaPrivateNonceProvider(enclave, privateTransactionHandler);
+      new EeaPrivateNonceProvider(enclave, privateNonceProvider);
 
   @Test
   public void validRequestProducesExpectedNonce() {
     final long reportedNonce = 8L;
     PrivacyGroup[] returnedGroups =
         new PrivacyGroup[] {
-          new PrivacyGroup("Group1", Type.LEGACY, "Group1_Name", "Group1_Desc", new String[0]),
+          new PrivacyGroup(
+              BytesValues.asBase64String(privacyGroup),
+              Type.LEGACY,
+              "Group1_Name",
+              "Group1_Desc",
+              new String[0]),
         };
 
     final ArgumentCaptor<FindPrivacyGroupRequest> groupMembersCaptor =
         ArgumentCaptor.forClass(FindPrivacyGroupRequest.class);
 
     when(enclave.findPrivacyGroup(groupMembersCaptor.capture())).thenReturn(returnedGroups);
-    when(privateTransactionHandler.getSenderNonce(address, "Group1")).thenReturn(reportedNonce);
+    when(privateNonceProvider.getNonce(address, privacyGroup)).thenReturn(reportedNonce);
 
     final long nonce =
         nonceProvider.determineNonce("privateFrom", new String[] {"first", "second"}, address);
@@ -74,7 +82,7 @@ public class EeaPrivateNonceProviderTest {
         ArgumentCaptor.forClass(FindPrivacyGroupRequest.class);
 
     when(enclave.findPrivacyGroup(groupMembersCaptor.capture())).thenReturn(returnedGroups);
-    when(privateTransactionHandler.getSenderNonce(address, "Group1")).thenReturn(reportedNonce);
+    when(privateNonceProvider.getNonce(address, privacyGroup)).thenReturn(reportedNonce);
 
     final long nonce =
         nonceProvider.determineNonce("privateFrom", new String[] {"first", "second"}, address);

@@ -38,7 +38,6 @@ import org.hyperledger.besu.ethereum.privacy.PrivateTransaction;
 import org.hyperledger.besu.ethereum.privacy.PrivateTransactionHandler;
 import org.hyperledger.besu.util.bytes.BytesValue;
 
-import java.io.IOException;
 import java.math.BigInteger;
 import java.util.Optional;
 
@@ -194,7 +193,7 @@ public class EeaSendRawTransactionTest {
   }
 
   @Test
-  public void validTransactionIsSentToTransactionPool() throws Exception {
+  public void validTransactionIsSentToTransactionPool() {
     when(parameter.required(any(Object[].class), anyInt(), any()))
         .thenReturn(VALID_PRIVATE_TRANSACTION_RLP);
     when(privateTxHandler.sendToOrion(any(PrivateTransaction.class))).thenReturn(MOCK_ORION_KEY);
@@ -229,7 +228,7 @@ public class EeaSendRawTransactionTest {
   }
 
   @Test
-  public void validTransactionPrivacyGroupIsSentToTransactionPool() throws Exception {
+  public void validTransactionPrivacyGroupIsSentToTransactionPool() {
     when(parameter.required(any(Object[].class), anyInt(), any()))
         .thenReturn(VALID_PRIVATE_TRANSACTION_RLP_PRIVACY_GROUP);
     when(privateTxHandler.sendToOrion(any(PrivateTransaction.class))).thenReturn(MOCK_ORION_KEY);
@@ -267,7 +266,7 @@ public class EeaSendRawTransactionTest {
   }
 
   @Test
-  public void transactionPrivacyGroupNoPrivateFromReturnsError() throws Exception {
+  public void transactionPrivacyGroupNoPrivateFromReturnsError() {
     when(parameter.required(any(Object[].class), anyInt(), any()))
         .thenReturn(PRIVATE_TRANSACTION_RLP_PRIVACY_GROUP_NO_PRIVATE_FROM);
 
@@ -287,11 +286,11 @@ public class EeaSendRawTransactionTest {
   }
 
   @Test
-  public void invalidTransactionIsSentToTransactionPool() throws Exception {
+  public void whenEnclaveIsDownDoesNotSendToTransactionPool() {
     when(parameter.required(any(Object[].class), anyInt(), any()))
         .thenReturn(VALID_PRIVATE_TRANSACTION_RLP);
     when(privateTxHandler.sendToOrion(any(PrivateTransaction.class)))
-        .thenThrow(new IOException("enclave failed to execute"));
+        .thenThrow(new RuntimeException("enclave failed to execute"));
 
     final JsonRpcRequest request =
         new JsonRpcRequest(

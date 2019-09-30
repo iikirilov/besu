@@ -24,18 +24,18 @@ import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcRespon
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcSuccessResponse;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.results.Quantity;
 import org.hyperledger.besu.ethereum.core.Address;
-import org.hyperledger.besu.ethereum.privacy.PrivateTransactionHandler;
+import org.hyperledger.besu.ethereum.privacy.PrivateNonceProvider;
+import org.hyperledger.besu.util.bytes.BytesValues;
 
 public class PrivGetTransactionCount implements JsonRpcMethod {
 
   private final JsonRpcParameter parameters;
-  private final PrivateTransactionHandler privateTransactionHandler;
+  private final PrivateNonceProvider privateNonceProvider;
 
   public PrivGetTransactionCount(
-      final JsonRpcParameter parameters,
-      final PrivateTransactionHandler privateTransactionHandler) {
+      final JsonRpcParameter parameters, final PrivateNonceProvider privateNonceProvider) {
     this.parameters = parameters;
-    this.privateTransactionHandler = privateTransactionHandler;
+    this.privateNonceProvider = privateNonceProvider;
   }
 
   @Override
@@ -52,7 +52,8 @@ public class PrivGetTransactionCount implements JsonRpcMethod {
     final Address address = parameters.required(request.getParams(), 0, Address.class);
     final String privacyGroupId = parameters.required(request.getParams(), 1, String.class);
 
-    final long nonce = privateTransactionHandler.getSenderNonce(address, privacyGroupId);
+    final long nonce =
+        privateNonceProvider.getNonce(address, BytesValues.fromBase64(privacyGroupId));
     return new JsonRpcSuccessResponse(request.getId(), Quantity.create(nonce));
   }
 }
