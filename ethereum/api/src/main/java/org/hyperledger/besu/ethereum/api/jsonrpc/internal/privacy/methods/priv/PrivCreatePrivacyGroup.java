@@ -28,7 +28,6 @@ import org.hyperledger.besu.ethereum.api.jsonrpc.internal.privacy.parameters.Cre
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcErrorResponse;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcResponse;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.response.JsonRpcSuccessResponse;
-import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 
 import org.apache.logging.log4j.Logger;
 
@@ -36,15 +35,15 @@ public class PrivCreatePrivacyGroup implements JsonRpcMethod {
 
   private static final Logger LOG = getLogger();
   private final Enclave enclave;
-  private PrivacyParameters privacyParameters;
+  private final String defaultEnclaveAddress;
   private final JsonRpcParameter parameters;
 
   public PrivCreatePrivacyGroup(
       final Enclave enclave,
-      final PrivacyParameters privacyParameters,
+      final String defaultEnclaveAddress,
       final JsonRpcParameter parameters) {
     this.enclave = enclave;
-    this.privacyParameters = privacyParameters;
+    this.defaultEnclaveAddress = defaultEnclaveAddress;
     this.parameters = parameters;
   }
 
@@ -68,7 +67,7 @@ public class PrivCreatePrivacyGroup implements JsonRpcMethod {
     final CreatePrivacyGroupRequest createPrivacyGroupRequest =
         new CreatePrivacyGroupRequest(
             parameter.getAddresses(),
-            privacyParameters.getEnclavePublicKey(),
+            defaultEnclaveAddress,
             parameter.getName(),
             parameter.getDescription());
     final PrivacyGroup response;

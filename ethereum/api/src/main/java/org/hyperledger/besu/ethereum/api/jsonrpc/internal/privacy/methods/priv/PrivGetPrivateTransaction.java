@@ -30,7 +30,6 @@ import org.hyperledger.besu.ethereum.api.jsonrpc.internal.results.privacy.Privat
 import org.hyperledger.besu.ethereum.api.query.BlockchainQueries;
 import org.hyperledger.besu.ethereum.api.query.TransactionWithMetadata;
 import org.hyperledger.besu.ethereum.core.Hash;
-import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.privacy.PrivateTransaction;
 import org.hyperledger.besu.ethereum.rlp.RLP;
 import org.hyperledger.besu.util.bytes.BytesValues;
@@ -44,17 +43,17 @@ public class PrivGetPrivateTransaction implements JsonRpcMethod {
   private final BlockchainQueries blockchain;
   private final Enclave enclave;
   private final JsonRpcParameter parameters;
-  private final PrivacyParameters privacyParameters;
+  private final String defaultEnclaveAddress;
 
   public PrivGetPrivateTransaction(
       final BlockchainQueries blockchain,
       final Enclave enclave,
       final JsonRpcParameter parameters,
-      final PrivacyParameters privacyParameters) {
+      final String defaultEnclaveAddress) {
     this.blockchain = blockchain;
     this.enclave = enclave;
     this.parameters = parameters;
-    this.privacyParameters = privacyParameters;
+    this.defaultEnclaveAddress = defaultEnclaveAddress;
   }
 
   @Override
@@ -77,7 +76,7 @@ public class PrivGetPrivateTransaction implements JsonRpcMethod {
       ReceiveResponse receiveResponse =
           getReceiveResponseFromEnclave(
               BytesValues.asBase64String(resultTransaction.getTransaction().getPayload()),
-              privacyParameters.getEnclavePublicKey());
+              defaultEnclaveAddress);
 
       LOG.trace("Received transaction information from Enclave");
 

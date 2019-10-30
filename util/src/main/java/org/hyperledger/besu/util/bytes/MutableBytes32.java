@@ -142,6 +142,11 @@ public interface MutableBytes32 extends MutableBytesValue, Bytes32 {
       public String toString() {
         return value.toString();
       }
+
+      @Override
+      public String asBase64String() {
+        return value.asBase64String();
+      }
     };
   }
 }

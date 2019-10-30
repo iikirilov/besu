@@ -15,6 +15,7 @@
 package org.hyperledger.besu.ethereum.api.jsonrpc;
 
 import org.hyperledger.besu.config.GenesisConfigOptions;
+import org.hyperledger.besu.crypto.SECP256K1;
 import org.hyperledger.besu.enclave.Enclave;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.filter.FilterManager;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.AdminAddPeer;
@@ -110,7 +111,6 @@ import org.hyperledger.besu.ethereum.api.query.BlockchainQueries;
 import org.hyperledger.besu.ethereum.blockcreation.MiningCoordinator;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
 import org.hyperledger.besu.ethereum.core.Address;
-import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Synchronizer;
 import org.hyperledger.besu.ethereum.eth.transactions.PendingTransactions;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPool;
@@ -121,9 +121,11 @@ import org.hyperledger.besu.ethereum.p2p.rlpx.wire.Capability;
 import org.hyperledger.besu.ethereum.permissioning.AccountLocalConfigPermissioningController;
 import org.hyperledger.besu.ethereum.permissioning.NodeLocalConfigPermissioningController;
 import org.hyperledger.besu.ethereum.privacy.ChainHeadPrivateNonceProvider;
+import org.hyperledger.besu.ethereum.privacy.PrivacyContext;
 import org.hyperledger.besu.ethereum.privacy.PrivateNonceProvider;
 import org.hyperledger.besu.ethereum.privacy.PrivateStateRootResolver;
 import org.hyperledger.besu.ethereum.privacy.PrivateTransactionHandler;
+import org.hyperledger.besu.ethereum.privacy.PrivateTransactionValidator;
 import org.hyperledger.besu.ethereum.privacy.markertransaction.FixedKeySigningPrivateMarkerTransactionFactory;
 import org.hyperledger.besu.ethereum.privacy.markertransaction.PrivateMarkerTransactionFactory;
 import org.hyperledger.besu.ethereum.privacy.markertransaction.RandomSigningPrivateMarkerTransactionFactory;
@@ -161,7 +163,7 @@ public class JsonRpcMethodsFactory {
       final FilterManager filterManager,
       final Optional<AccountLocalConfigPermissioningController> accountsWhitelistController,
       final Optional<NodeLocalConfigPermissioningController> nodeWhitelistController,
-      final PrivacyParameters privacyParameters,
+      final PrivacyContext privacyContext,
       final JsonRpcConfiguration jsonRpcConfiguration,
       final WebSocketConfiguration webSocketConfiguration,
       final MetricsConfiguration metricsConfiguration) {
@@ -183,7 +185,7 @@ public class JsonRpcMethodsFactory {
         accountsWhitelistController,
         nodeWhitelistController,
         rpcApis,
-        privacyParameters,
+        privacyContext,
         jsonRpcConfiguration,
         webSocketConfiguration,
         metricsConfiguration);
@@ -205,7 +207,7 @@ public class JsonRpcMethodsFactory {
       final Optional<AccountLocalConfigPermissioningController> accountsWhitelistController,
       final Optional<NodeLocalConfigPermissioningController> nodeWhitelistController,
       final Collection<RpcApi> rpcApis,
-      final PrivacyParameters privacyParameters,
+      final PrivacyContext privacyContext,
       final JsonRpcConfiguration jsonRpcConfiguration,
       final WebSocketConfiguration webSocketConfiguration,
       final MetricsConfiguration metricsConfiguration) {
@@ -358,23 +360,28 @@ public class JsonRpcMethodsFactory {
     final boolean eea = rpcApis.contains(RpcApis.EEA);
     final boolean priv = rpcApis.contains(RpcApis.PRIV);
     if (eea || priv) {
+      final Enclave enclave = privacyContext.getEnclave();
+
       final PrivateMarkerTransactionFactory markerTransactionFactory =
           createPrivateMarkerTransactionFactory(
-              privacyParameters, blockchainQueries, transactionPool.getPendingTransactions());
+              privacyContext.getPrivacyPrecompiledAddress(),
+              privacyContext.maybeMarkerSigningKeyPair(),
+              blockchainQueries,
+              transactionPool.getPendingTransactions());
 
       final PrivateNonceProvider privateNonceProvider =
           new ChainHeadPrivateNonceProvider(
               blockchainQueries.getBlockchain(),
-              new PrivateStateRootResolver(privacyParameters.getPrivateStateStorage()),
-              privacyParameters.getPrivateWorldStateArchive());
+              new PrivateStateRootResolver(privacyContext.getPrivateStateStorage()),
+              privacyContext.getPrivateWorldStateArchive());
 
       final PrivateTransactionHandler privateTransactionHandler =
           new PrivateTransactionHandler(
-              privacyParameters,
-              protocolSchedule.getChainId(),
+              enclave,
+              privacyContext.getDefaultEnclaveAddress(),
+              new PrivateTransactionValidator(protocolSchedule.getChainId()),
               markerTransactionFactory,
               privateNonceProvider);
-      final Enclave enclave = new Enclave(privacyParameters.getEnclaveUri());
       if (eea) {
         addMethods(
             enabledMethods,
@@ -385,15 +392,21 @@ public class JsonRpcMethodsFactory {
       if (priv) {
         addMethods(
             enabledMethods,
-            new PrivGetTransactionReceipt(blockchainQueries, enclave, parameter, privacyParameters),
+            new PrivGetTransactionReceipt(
+                blockchainQueries,
+                enclave,
+                parameter,
+                privacyContext.getDefaultEnclaveAddress(),
+                privacyContext.getPrivateStateStorage()),
             new PrivCreatePrivacyGroup(
-                new Enclave(privacyParameters.getEnclaveUri()), privacyParameters, parameter),
+                enclave, privacyContext.getDefaultEnclaveAddress(), parameter),
             new PrivDeletePrivacyGroup(
-                new Enclave(privacyParameters.getEnclaveUri()), privacyParameters, parameter),
-            new PrivFindPrivacyGroup(new Enclave(privacyParameters.getEnclaveUri()), parameter),
-            new PrivGetPrivacyPrecompileAddress(privacyParameters),
+                enclave, privacyContext.getDefaultEnclaveAddress(), parameter),
+            new PrivFindPrivacyGroup(enclave, parameter),
+            new PrivGetPrivacyPrecompileAddress(privacyContext.getPrivacyPrecompiledAddress()),
             new PrivGetTransactionCount(parameter, privateNonceProvider),
-            new PrivGetPrivateTransaction(blockchainQueries, enclave, parameter, privacyParameters),
+            new PrivGetPrivateTransaction(
+                blockchainQueries, enclave, parameter, privacyContext.getDefaultEnclaveAddress()),
             new PrivDistributeRawTransaction(
                 privateTransactionHandler, transactionPool, parameter));
       }
@@ -410,19 +423,17 @@ public class JsonRpcMethodsFactory {
   }
 
   private PrivateMarkerTransactionFactory createPrivateMarkerTransactionFactory(
-      final PrivacyParameters privacyParameters,
+      final Address privacyAddress,
+      final Optional<SECP256K1.KeyPair> markerSigningKeyPair,
       final BlockchainQueries blockchainQueries,
       final PendingTransactions pendingTransactions) {
 
-    final Address privateContractAddress =
-        Address.privacyPrecompiled(privacyParameters.getPrivacyAddress());
-
-    if (privacyParameters.getSigningKeyPair().isPresent()) {
+    if (markerSigningKeyPair.isPresent()) {
       return new FixedKeySigningPrivateMarkerTransactionFactory(
-          privateContractAddress,
+          privacyAddress,
           new LatestNonceProvider(blockchainQueries, pendingTransactions),
-          privacyParameters.getSigningKeyPair().get());
+          markerSigningKeyPair.get());
     }
-    return new RandomSigningPrivateMarkerTransactionFactory(privateContractAddress);
+    return new RandomSigningPrivateMarkerTransactionFactory(privacyAddress);
   }
 }

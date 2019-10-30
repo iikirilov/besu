@@ -24,6 +24,7 @@ import org.hyperledger.besu.ethereum.core.BlockImporter;
 import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Wei;
 import org.hyperledger.besu.ethereum.mainnet.precompiles.privacy.PrivacyPrecompiledContract;
+import org.hyperledger.besu.ethereum.privacy.PrivacyContext;
 import org.hyperledger.besu.ethereum.privacy.PrivateTransactionProcessor;
 import org.hyperledger.besu.ethereum.privacy.PrivateTransactionValidator;
 import org.hyperledger.besu.ethereum.vm.EVM;
@@ -56,7 +57,7 @@ public class ProtocolSpecBuilder<T> {
   private BlockImporterBuilder<T> blockImporterBuilder;
   private String name;
   private MiningBeneficiaryCalculator miningBeneficiaryCalculator;
-  private PrivacyParameters privacyParameters;
+  private PrivacyContext privacyContext;
   private PrivateTransactionProcessorBuilder privateTransactionProcessorBuilder;
   private PrivateTransactionValidatorBuilder privateTransactionValidatorBuilder;
 
@@ -138,7 +139,7 @@ public class ProtocolSpecBuilder<T> {
         (precompiledContractConfiguration) -> {
           final PrecompileContractRegistry registry =
               precompileContractRegistryBuilder.apply(precompiledContractConfiguration);
-          if (precompiledContractConfiguration.getPrivacyParameters().isEnabled()) {
+          if (precompiledContractConfiguration.getPrivacyContext().isEnabled()) {
             MainnetPrecompiledContractRegistries.appendPrivacy(
                 registry, precompiledContractConfiguration, Account.DEFAULT_VERSION);
             MainnetPrecompiledContractRegistries.appendPrivacy(
@@ -203,8 +204,8 @@ public class ProtocolSpecBuilder<T> {
     return this;
   }
 
-  public ProtocolSpecBuilder<T> privacyParameters(final PrivacyParameters privacyParameters) {
-    this.privacyParameters = privacyParameters;
+  public ProtocolSpecBuilder<T> privacyContext(final PrivacyContext privacyContext) {
+    this.privacyContext = privacyContext;
     return this;
   }
 
@@ -221,7 +222,7 @@ public class ProtocolSpecBuilder<T> {
         .transactionValidatorBuilder(transactionValidatorBuilder)
         .privateTransactionValidatorBuilder(privateTransactionValidatorBuilder)
         .contractCreationProcessorBuilder(contractCreationProcessorBuilder)
-        .privacyParameters(privacyParameters)
+        .privacyContext(privacyContext)
         .precompileContractRegistryBuilder(precompileContractRegistryBuilder)
         .messageCallProcessorBuilder(messageCallProcessorBuilder)
         .transactionProcessorBuilder(transactionProcessorBuilder)
@@ -263,12 +264,12 @@ public class ProtocolSpecBuilder<T> {
     checkNotNull(name, "Missing name");
     checkNotNull(miningBeneficiaryCalculator, "Missing Mining Beneficiary Calculator");
     checkNotNull(protocolSchedule, "Missing protocol schedule");
-    checkNotNull(privacyParameters, "Missing privacy parameters");
+    checkNotNull(privacyContext, "Missing privacy parameters");
 
     final GasCalculator gasCalculator = gasCalculatorBuilder.get();
     final EVM evm = evmBuilder.apply(gasCalculator);
     final PrecompiledContractConfiguration precompiledContractConfiguration =
-        new PrecompiledContractConfiguration(gasCalculator, privacyParameters);
+        new PrecompiledContractConfiguration(gasCalculator, privacyContext);
     final TransactionValidator transactionValidator =
         transactionValidatorBuilder.apply(gasCalculator);
     final AbstractMessageProcessor contractCreationProcessor =
@@ -291,8 +292,8 @@ public class ProtocolSpecBuilder<T> {
             messageCallProcessor,
             privateTransactionValidator);
     // Set private transaction components
-    if (privacyParameters.isEnabled()) {
-      final Address address = Address.privacyPrecompiled(privacyParameters.getPrivacyAddress());
+    if (privacyContext.isEnabled()) {
+      final Address address = privacyContext.getPrivacyPrecompiledAddress();
       final PrivacyPrecompiledContract privacyPrecompiledContract =
           (PrivacyPrecompiledContract)
               precompileContractRegistry.get(address, Account.DEFAULT_VERSION);

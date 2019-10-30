@@ -21,6 +21,7 @@ import org.hyperledger.besu.plugin.data.UnformattedData;
 
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
+import java.util.Base64;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.buffer.Buffer;
@@ -304,6 +305,35 @@ public interface BytesValue extends Comparable<BytesValue>, UnformattedData {
   static BytesValue fromHexString(final String str, final int destinationSize) {
     checkArgument(destinationSize >= 0, "Invalid negative destination size %s", destinationSize);
     return BytesValues.fromHexString(str, destinationSize, false);
+  }
+
+  /**
+   * Returns the base64 string representation of this value.
+   *
+   * @return The base64 representation of this value.
+   */
+  String asBase64String();
+
+  /**
+   * Parse an base64 byte array into a {@link BytesValue}.
+   *
+   * @param bytes The byte array to parse
+   * @return A BytesValue corresponding to {@code str}
+   * @throws IllegalArgumentException if {@code str} does correspond to valid base64 representation.
+   */
+  static BytesValue fromBase64(final byte[] bytes) {
+    return BytesValue.wrap(Base64.getDecoder().decode(bytes));
+  }
+
+  /**
+   * Parse an base64 string into a {@link BytesValue}.
+   *
+   * @param str The base64 string to parse.
+   * @return A BytesValue corresponding to {@code str}.
+   * @throws IllegalArgumentException if {@code str} does correspond to valid base64 representation.
+   */
+  static BytesValue fromBase64(final String str) {
+    return BytesValue.wrap(Base64.getDecoder().decode(str));
   }
 
   /** @return The number of bytes this value represents. */

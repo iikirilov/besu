@@ -45,6 +45,7 @@ import org.hyperledger.besu.ethereum.eth.transactions.TransactionPoolConfigurati
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPoolFactory;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.p2p.config.SubProtocolConfiguration;
+import org.hyperledger.besu.ethereum.privacy.PrivacyContext;
 import org.hyperledger.besu.ethereum.storage.StorageProvider;
 import org.hyperledger.besu.ethereum.worldstate.MarkSweepPruner;
 import org.hyperledger.besu.ethereum.worldstate.Pruner;
@@ -87,6 +88,7 @@ public abstract class BesuControllerBuilder<C> {
   protected boolean isRevertReasonEnabled;
   GasLimitCalculator gasLimitCalculator;
   private StorageProvider storageProvider;
+  private StorageProvider privateStorageProvider;
   private final List<Runnable> shutdownActions = new ArrayList<>();
   private boolean isPruningEnabled;
   private PruningConfiguration pruningConfiguration;
@@ -95,6 +97,11 @@ public abstract class BesuControllerBuilder<C> {
 
   public BesuControllerBuilder<C> storageProvider(final StorageProvider storageProvider) {
     this.storageProvider = storageProvider;
+    return this;
+  }
+
+  public BesuControllerBuilder<C> privateStorageProvider(final StorageProvider storageProvider) {
+    this.privateStorageProvider = storageProvider;
     return this;
   }
 
@@ -299,6 +306,9 @@ public abstract class BesuControllerBuilder<C> {
             syncState,
             ethProtocolManager);
 
+    final PrivacyContext privacyContext =
+        PrivacyContext.init(privacyParameters, privateStorageProvider);
+
     final SubProtocolConfiguration subProtocolConfiguration =
         createSubProtocolConfiguration(ethProtocolManager);
 
@@ -314,7 +324,7 @@ public abstract class BesuControllerBuilder<C> {
         syncState,
         transactionPool,
         miningCoordinator,
-        privacyParameters,
+        privacyContext,
         () -> {
           shutdownActions.forEach(Runnable::run);
           try {

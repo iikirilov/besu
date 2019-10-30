@@ -18,11 +18,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import org.hyperledger.besu.crypto.SECP256K1;
 import org.hyperledger.besu.crypto.SECP256K1.KeyPair;
-import org.hyperledger.besu.ethereum.privacy.storage.PrivateStateStorage;
 import org.hyperledger.besu.ethereum.storage.StorageProvider;
-import org.hyperledger.besu.ethereum.worldstate.WorldStateArchive;
-import org.hyperledger.besu.ethereum.worldstate.WorldStatePreimageStorage;
-import org.hyperledger.besu.ethereum.worldstate.WorldStateStorage;
+import org.hyperledger.besu.util.bytes.BytesValue;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,89 +32,57 @@ import com.google.common.io.Files;
 public class PrivacyParameters {
 
   public static final URI DEFAULT_ENCLAVE_URL = URI.create("http://localhost:8888");
-  public static final PrivacyParameters DEFAULT = new PrivacyParameters();
+  public static final PrivacyParameters DEFAULT = builder().buildDefault();
 
-  private Integer privacyAddress = Address.PRIVACY;
-  private boolean enabled;
-  private URI enclaveUri;
-  private String enclavePublicKey;
-  private File enclavePublicKeyFile;
-  private Optional<SECP256K1.KeyPair> signingKeyPair = Optional.empty();
-
-  private WorldStateArchive privateWorldStateArchive;
-  private StorageProvider privateStorageProvider;
-  private PrivateStateStorage privateStateStorage;
-
-  public Integer getPrivacyAddress() {
-    return privacyAddress;
+  public static Builder builder() {
+    return new Builder();
   }
 
-  public void setPrivacyAddress(final Integer privacyAddress) {
+  private final Address privacyAddress;
+  private final boolean enabled;
+  private final URI enclaveUri;
+  private final BytesValue enclavePublicKey;
+  private final Optional<SECP256K1.KeyPair> markerSigningKeyPair;
+
+  private final StorageProvider privateStorageProvider;
+
+  private PrivacyParameters(
+      final boolean enabled,
+      final URI enclaveUri,
+      final BytesValue enclavePublicKey,
+      final Address privacyAddress,
+      final Optional<KeyPair> markerSigningKey,
+      final StorageProvider privateStorageProvider) {
     this.privacyAddress = privacyAddress;
+    this.enabled = enabled;
+    this.enclaveUri = enclaveUri;
+    this.enclavePublicKey = enclavePublicKey;
+    this.markerSigningKeyPair = markerSigningKey;
+    this.privateStorageProvider = privateStorageProvider;
+  }
+
+  public Address getPrivacyAddress() {
+    return privacyAddress;
   }
 
   public Boolean isEnabled() {
     return enabled;
   }
 
-  public void setEnabled(final boolean enabled) {
-    this.enabled = enabled;
-  }
-
   public URI getEnclaveUri() {
     return enclaveUri;
   }
 
-  public void setEnclaveUri(final URI enclaveUri) {
-    this.enclaveUri = enclaveUri;
-  }
-
-  public String getEnclavePublicKey() {
+  public BytesValue getEnclavePublicKey() {
     return enclavePublicKey;
   }
 
-  public void setEnclavePublicKey(final String enclavePublicKey) {
-    this.enclavePublicKey = enclavePublicKey;
-  }
-
-  public File getEnclavePublicKeyFile() {
-    return enclavePublicKeyFile;
-  }
-
-  public void setEnclavePublicKeyFile(final File enclavePublicKeyFile) {
-    this.enclavePublicKeyFile = enclavePublicKeyFile;
-  }
-
-  public Optional<SECP256K1.KeyPair> getSigningKeyPair() {
-    return signingKeyPair;
-  }
-
-  public void setSigningKeyPair(final SECP256K1.KeyPair signingKeyPair) {
-    this.signingKeyPair = Optional.ofNullable(signingKeyPair);
-  }
-
-  public WorldStateArchive getPrivateWorldStateArchive() {
-    return privateWorldStateArchive;
-  }
-
-  public void setPrivateWorldStateArchive(final WorldStateArchive privateWorldStateArchive) {
-    this.privateWorldStateArchive = privateWorldStateArchive;
+  public Optional<SECP256K1.KeyPair> getMarkerSigningKeyPair() {
+    return markerSigningKeyPair;
   }
 
   public StorageProvider getPrivateStorageProvider() {
     return privateStorageProvider;
-  }
-
-  public void setPrivateStorageProvider(final StorageProvider privateStorageProvider) {
-    this.privateStorageProvider = privateStorageProvider;
-  }
-
-  public PrivateStateStorage getPrivateStateStorage() {
-    return privateStateStorage;
-  }
-
-  public void setPrivateStateStorage(final PrivateStateStorage privateStateStorage) {
-    this.privateStateStorage = privateStateStorage;
   }
 
   @Override
@@ -127,16 +92,15 @@ public class PrivacyParameters {
 
   public static class Builder {
 
-    private boolean enabled;
+    private boolean enabled = false;
     private URI enclaveUrl;
-    private Integer privacyAddress = Address.PRIVACY;
-    private File enclavePublicKeyFile;
-    private String enclavePublicKey;
-    private Path privateKeyPath;
+    private Address privacyAddress = Address.DEFAULT_PRIVACY;
+    private BytesValue enclavePublicKey;
+    private Optional<Path> privateKeyPath = Optional.empty();
     private StorageProvider storageProvider;
 
     public Builder setPrivacyAddress(final Integer privacyAddress) {
-      this.privacyAddress = privacyAddress;
+      this.privacyAddress = Address.privacyPrecompiled(privacyAddress);
       return this;
     }
 
@@ -156,42 +120,28 @@ public class PrivacyParameters {
     }
 
     public Builder setPrivateKeyPath(final Path privateKeyPath) {
-      this.privateKeyPath = privateKeyPath;
+      this.privateKeyPath = Optional.of(privateKeyPath);
+      return this;
+    }
+
+    public Builder setEnclavePublicKeyUsingFile(final File publicKeyFile) throws IOException {
+      this.enclavePublicKey =
+          BytesValue.fromBase64(Files.asCharSource(publicKeyFile, UTF_8).read());
       return this;
     }
 
     public PrivacyParameters build() throws IOException {
-      final PrivacyParameters config = new PrivacyParameters();
-      if (enabled) {
-        final WorldStateStorage privateWorldStateStorage =
-            storageProvider.createWorldStateStorage();
-        final WorldStatePreimageStorage privatePreimageStorage =
-            storageProvider.createWorldStatePreimageStorage();
-        final WorldStateArchive privateWorldStateArchive =
-            new WorldStateArchive(privateWorldStateStorage, privatePreimageStorage);
-
-        final PrivateStateStorage privateStateStorage = storageProvider.createPrivateStateStorage();
-
-        config.setPrivateWorldStateArchive(privateWorldStateArchive);
-        config.setEnclavePublicKey(enclavePublicKey);
-        config.setEnclavePublicKeyFile(enclavePublicKeyFile);
-        config.setPrivateStorageProvider(storageProvider);
-        config.setPrivateStateStorage(privateStateStorage);
-
-        if (privateKeyPath != null) {
-          config.setSigningKeyPair(KeyPair.load(privateKeyPath.toFile()));
-        }
+      Optional<KeyPair> markerSigningKey = Optional.empty();
+      if (privateKeyPath.isPresent()) {
+        markerSigningKey = Optional.of(KeyPair.load(privateKeyPath.get().toFile()));
       }
-      config.setEnabled(enabled);
-      config.setEnclaveUri(enclaveUrl);
-      config.setPrivacyAddress(privacyAddress);
-      return config;
+      return new PrivacyParameters(
+          enabled, enclaveUrl, enclavePublicKey, privacyAddress, markerSigningKey, storageProvider);
     }
 
-    public Builder setEnclavePublicKeyUsingFile(final File publicKeyFile) throws IOException {
-      this.enclavePublicKeyFile = publicKeyFile;
-      this.enclavePublicKey = Files.asCharSource(publicKeyFile, UTF_8).read();
-      return this;
+    private PrivacyParameters buildDefault() {
+      return new PrivacyParameters(
+          enabled, enclaveUrl, enclavePublicKey, privacyAddress, Optional.empty(), storageProvider);
     }
   }
 }

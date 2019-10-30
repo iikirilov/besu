@@ -21,7 +21,6 @@ import org.hyperledger.besu.enclave.types.SendRequest;
 import org.hyperledger.besu.enclave.types.SendRequestBesu;
 import org.hyperledger.besu.enclave.types.SendRequestLegacy;
 import org.hyperledger.besu.enclave.types.SendResponse;
-import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.mainnet.TransactionValidator;
 import org.hyperledger.besu.ethereum.mainnet.ValidationResult;
@@ -29,9 +28,7 @@ import org.hyperledger.besu.ethereum.privacy.markertransaction.PrivateMarkerTran
 import org.hyperledger.besu.ethereum.rlp.BytesValueRLPOutput;
 import org.hyperledger.besu.util.bytes.BytesValues;
 
-import java.math.BigInteger;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.apache.logging.log4j.LogManager;
@@ -46,19 +43,6 @@ public class PrivateTransactionHandler {
   private final PrivateTransactionValidator privateTransactionValidator;
   private final PrivateMarkerTransactionFactory privateMarkerTransactionFactory;
   private final PrivateNonceProvider privateNonceProvider;
-
-  public PrivateTransactionHandler(
-      final PrivacyParameters privacyParameters,
-      final Optional<BigInteger> chainId,
-      final PrivateMarkerTransactionFactory privateMarkerTransactionFactory,
-      final PrivateNonceProvider privateNonceProvider) {
-    this(
-        new Enclave(privacyParameters.getEnclaveUri()),
-        privacyParameters.getEnclavePublicKey(),
-        new PrivateTransactionValidator(chainId),
-        privateMarkerTransactionFactory,
-        privateNonceProvider);
-  }
 
   public PrivateTransactionHandler(
       final Enclave enclave,

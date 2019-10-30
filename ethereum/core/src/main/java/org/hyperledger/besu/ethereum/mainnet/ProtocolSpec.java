@@ -36,7 +36,8 @@ public class ProtocolSpec<C> {
 
   private final TransactionProcessor transactionProcessor;
 
-  private PrivateTransactionValidator privateTransactionValidator;
+  private final PrivateTransactionValidator privateTransactionValidator;
+
   private final PrivateTransactionProcessor privateTransactionProcessor;
 
   private final BlockHeaderValidator<C> blockHeaderValidator;

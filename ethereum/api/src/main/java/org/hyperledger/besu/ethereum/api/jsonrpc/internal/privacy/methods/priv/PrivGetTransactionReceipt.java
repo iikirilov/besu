@@ -35,9 +35,9 @@ import org.hyperledger.besu.ethereum.core.Address;
 import org.hyperledger.besu.ethereum.core.BlockBody;
 import org.hyperledger.besu.ethereum.core.Hash;
 import org.hyperledger.besu.ethereum.core.Log;
-import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.privacy.PrivateTransaction;
+import org.hyperledger.besu.ethereum.privacy.storage.PrivateStateStorage;
 import org.hyperledger.besu.ethereum.rlp.BytesValueRLPInput;
 import org.hyperledger.besu.ethereum.rlp.RLP;
 import org.hyperledger.besu.util.bytes.Bytes32;
@@ -57,17 +57,20 @@ public class PrivGetTransactionReceipt implements JsonRpcMethod {
   private final BlockchainQueries blockchain;
   private final Enclave enclave;
   private final JsonRpcParameter parameters;
-  private final PrivacyParameters privacyParameters;
+  private final String defaultEnclaveAccount;
+  private PrivateStateStorage privateStateStorage;
 
   public PrivGetTransactionReceipt(
       final BlockchainQueries blockchain,
       final Enclave enclave,
       final JsonRpcParameter parameters,
-      final PrivacyParameters privacyParameters) {
+      final String defaultEnclaveAccount,
+      final PrivateStateStorage privateStateStorage) {
     this.blockchain = blockchain;
     this.enclave = enclave;
     this.parameters = parameters;
-    this.privacyParameters = privacyParameters;
+    this.defaultEnclaveAccount = defaultEnclaveAccount;
+    this.privateStateStorage = privateStateStorage;
   }
 
   @Override
@@ -92,11 +95,11 @@ public class PrivGetTransactionReceipt implements JsonRpcMethod {
     final Hash blockhash = location.getBlockHash();
     final long blockNumber = blockchain.getBlockchain().getBlockHeader(blockhash).get().getNumber();
 
-    final String publicKey = privacyParameters.getEnclavePublicKey();
     final PrivateTransaction privateTransaction;
     final String privacyGroupId;
     try {
-      final ReceiveResponse receiveResponse = getReceiveResponseFromEnclave(transaction, publicKey);
+      final ReceiveResponse receiveResponse =
+          getReceiveResponseFromEnclave(transaction, defaultEnclaveAccount);
       LOG.trace("Received transaction information from Enclave");
 
       final BytesValueRLPInput bytesValueRLPInput =
@@ -129,18 +132,12 @@ public class PrivGetTransactionReceipt implements JsonRpcMethod {
     LOG.trace("Calculated private transaction hash: {}", txHash);
 
     final List<Log> transactionLogs =
-        privacyParameters
-            .getPrivateStateStorage()
-            .getTransactionLogs(txHash)
-            .orElse(Collections.emptyList());
+        privateStateStorage.getTransactionLogs(txHash).orElse(Collections.emptyList());
 
     LOG.trace("Processed private transaction events");
 
     final BytesValue transactionOutput =
-        privacyParameters
-            .getPrivateStateStorage()
-            .getTransactionOutput(txHash)
-            .orElse(BytesValue.wrap(new byte[0]));
+        privateStateStorage.getTransactionOutput(txHash).orElse(BytesValue.wrap(new byte[0]));
 
     LOG.trace("Processed private transaction output");
 

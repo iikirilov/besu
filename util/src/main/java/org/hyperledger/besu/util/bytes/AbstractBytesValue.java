@@ -18,6 +18,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkElementIndex;
 
 import java.security.MessageDigest;
+import java.util.Base64;
 
 /**
  * A bare bone abstract {@link BytesValue} that implements basic methods likely common to all
@@ -149,5 +150,10 @@ public abstract class AbstractBytesValue implements BytesValue {
     }
 
     return r.toString();
+  }
+
+  @Override
+  public String asBase64String() {
+    return Base64.getEncoder().encodeToString(extractArray());
   }
 }

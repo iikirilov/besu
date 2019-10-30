@@ -24,10 +24,10 @@ import org.hyperledger.besu.ethereum.core.Gas;
 import org.hyperledger.besu.ethereum.core.Hash;
 import org.hyperledger.besu.ethereum.core.LogSeries;
 import org.hyperledger.besu.ethereum.core.MutableWorldState;
-import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.WorldUpdater;
 import org.hyperledger.besu.ethereum.debug.TraceOptions;
 import org.hyperledger.besu.ethereum.mainnet.AbstractPrecompiledContract;
+import org.hyperledger.besu.ethereum.privacy.PrivacyContext;
 import org.hyperledger.besu.ethereum.privacy.PrivateStateRootResolver;
 import org.hyperledger.besu.ethereum.privacy.PrivateTransaction;
 import org.hyperledger.besu.ethereum.privacy.PrivateTransactionProcessor;
@@ -42,14 +42,13 @@ import org.hyperledger.besu.ethereum.vm.MessageFrame;
 import org.hyperledger.besu.ethereum.worldstate.WorldStateArchive;
 import org.hyperledger.besu.util.bytes.Bytes32;
 import org.hyperledger.besu.util.bytes.BytesValue;
-import org.hyperledger.besu.util.bytes.BytesValues;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 public class PrivacyPrecompiledContract extends AbstractPrecompiledContract {
   private final Enclave enclave;
-  private final String enclavePublicKey;
+  private final BytesValue enclavePublicKey;
   private final WorldStateArchive privateWorldStateArchive;
   private final PrivateStateStorage privateStateStorage;
   private final PrivateStateRootResolver privateStateRootResolver;
@@ -58,18 +57,18 @@ public class PrivacyPrecompiledContract extends AbstractPrecompiledContract {
   private static final Logger LOG = LogManager.getLogger();
 
   public PrivacyPrecompiledContract(
-      final GasCalculator gasCalculator, final PrivacyParameters privacyParameters) {
+      final GasCalculator gasCalculator, final PrivacyContext privacyContext) {
     this(
         gasCalculator,
-        privacyParameters.getEnclavePublicKey(),
-        new Enclave(privacyParameters.getEnclaveUri()),
-        privacyParameters.getPrivateWorldStateArchive(),
-        privacyParameters.getPrivateStateStorage());
+        privacyContext.getDefaultEnclaveAddress(),
+        privacyContext.getEnclave(),
+        privacyContext.getPrivateWorldStateArchive(),
+        privacyContext.getPrivateStateStorage());
   }
 
   PrivacyPrecompiledContract(
       final GasCalculator gasCalculator,
-      final String enclavePublicKey,
+      final BytesValue enclavePublicKey,
       final Enclave enclave,
       final WorldStateArchive worldStateArchive,
       final PrivateStateStorage privateStateStorage) {
@@ -93,8 +92,8 @@ public class PrivacyPrecompiledContract extends AbstractPrecompiledContract {
 
   @Override
   public BytesValue compute(final BytesValue input, final MessageFrame messageFrame) {
-    final String key = BytesValues.asBase64String(input);
-    final ReceiveRequest receiveRequest = new ReceiveRequest(key, enclavePublicKey);
+    final String key = input.asBase64String();
+    final ReceiveRequest receiveRequest = new ReceiveRequest(key, enclavePublicKey.asBase64String());
 
     final ReceiveResponse receiveResponse;
     try {
@@ -105,13 +104,13 @@ public class PrivacyPrecompiledContract extends AbstractPrecompiledContract {
     }
 
     final BytesValueRLPInput bytesValueRLPInput =
-        new BytesValueRLPInput(BytesValues.fromBase64(receiveResponse.getPayload()), false);
+        new BytesValueRLPInput(BytesValue.fromBase64(receiveResponse.getPayload()), false);
 
     final PrivateTransaction privateTransaction = PrivateTransaction.readFrom(bytesValueRLPInput);
 
     final WorldUpdater publicWorldState = messageFrame.getWorldState();
 
-    final BytesValue privacyGroupId = BytesValues.fromBase64(receiveResponse.getPrivacyGroupId());
+    final BytesValue privacyGroupId = BytesValue.fromBase64(receiveResponse.getPrivacyGroupId());
 
     final Hash lastRootHash =
         privateStateRootResolver.resolveLastStateRoot(

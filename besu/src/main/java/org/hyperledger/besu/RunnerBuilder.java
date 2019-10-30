@@ -50,7 +50,6 @@ import org.hyperledger.besu.ethereum.api.jsonrpc.websocket.subscription.syncing.
 import org.hyperledger.besu.ethereum.api.query.BlockchainQueries;
 import org.hyperledger.besu.ethereum.blockcreation.MiningCoordinator;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
-import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Synchronizer;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPool;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
@@ -79,6 +78,7 @@ import org.hyperledger.besu.ethereum.permissioning.account.AccountPermissioningC
 import org.hyperledger.besu.ethereum.permissioning.node.InsufficientPeersPermissioningProvider;
 import org.hyperledger.besu.ethereum.permissioning.node.NodePermissioningController;
 import org.hyperledger.besu.ethereum.permissioning.node.PeerPermissionsAdapter;
+import org.hyperledger.besu.ethereum.privacy.PrivacyContext;
 import org.hyperledger.besu.ethereum.transaction.TransactionSimulator;
 import org.hyperledger.besu.ethereum.worldstate.WorldStateArchive;
 import org.hyperledger.besu.metrics.ObservableMetricsSystem;
@@ -349,7 +349,7 @@ public class RunnerBuilder {
     final TransactionPool transactionPool = besuController.getTransactionPool();
     final MiningCoordinator miningCoordinator = besuController.getMiningCoordinator();
 
-    final PrivacyParameters privacyParameters = besuController.getPrivacyParameters();
+    final PrivacyContext privacyContext = besuController.getPrivacyContext();
     final FilterManager filterManager = createFilterManager(vertx, context, transactionPool);
 
     final P2PNetwork peerNetwork = networkRunner.getNetwork();
@@ -387,7 +387,7 @@ public class RunnerBuilder {
               filterManager,
               accountLocalConfigPermissioningController,
               nodeLocalConfigPermissioningController,
-              privacyParameters,
+              privacyContext,
               jsonRpcConfiguration,
               webSocketConfiguration,
               metricsConfiguration);
@@ -445,7 +445,7 @@ public class RunnerBuilder {
               filterManager,
               accountLocalConfigPermissioningController,
               nodeLocalConfigPermissioningController,
-              privacyParameters,
+              privacyContext,
               jsonRpcConfiguration,
               webSocketConfiguration,
               metricsConfiguration);
@@ -575,7 +575,7 @@ public class RunnerBuilder {
       final FilterManager filterManager,
       final Optional<AccountLocalConfigPermissioningController> accountWhitelistController,
       final Optional<NodeLocalConfigPermissioningController> nodeWhitelistController,
-      final PrivacyParameters privacyParameters,
+      final PrivacyContext privacyContext,
       final JsonRpcConfiguration jsonRpcConfiguration,
       final WebSocketConfiguration webSocketConfiguration,
       final MetricsConfiguration metricsConfiguration) {
@@ -598,7 +598,7 @@ public class RunnerBuilder {
                 filterManager,
                 accountWhitelistController,
                 nodeWhitelistController,
-                privacyParameters,
+                privacyContext,
                 jsonRpcConfiguration,
                 webSocketConfiguration,
                 metricsConfiguration);

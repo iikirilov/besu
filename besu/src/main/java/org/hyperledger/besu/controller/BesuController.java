@@ -23,13 +23,13 @@ import org.hyperledger.besu.ethereum.api.jsonrpc.RpcApi;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.JsonRpcMethod;
 import org.hyperledger.besu.ethereum.api.jsonrpc.internal.methods.JsonRpcMethodFactory;
 import org.hyperledger.besu.ethereum.blockcreation.MiningCoordinator;
-import org.hyperledger.besu.ethereum.core.PrivacyParameters;
 import org.hyperledger.besu.ethereum.core.Synchronizer;
 import org.hyperledger.besu.ethereum.eth.manager.EthProtocolManager;
 import org.hyperledger.besu.ethereum.eth.sync.state.SyncState;
 import org.hyperledger.besu.ethereum.eth.transactions.TransactionPool;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.p2p.config.SubProtocolConfiguration;
+import org.hyperledger.besu.ethereum.privacy.PrivacyContext;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -49,7 +49,7 @@ public class BesuController<C> implements java.io.Closeable {
 
   private final TransactionPool transactionPool;
   private final MiningCoordinator miningCoordinator;
-  private final PrivacyParameters privacyParameters;
+  private final PrivacyContext privacyContext;
   private final Runnable close;
   private final SyncState syncState;
 
@@ -63,7 +63,7 @@ public class BesuController<C> implements java.io.Closeable {
       final SyncState syncState,
       final TransactionPool transactionPool,
       final MiningCoordinator miningCoordinator,
-      final PrivacyParameters privacyParameters,
+      final PrivacyContext privacyContext,
       final Runnable close,
       final JsonRpcMethodFactory additionalJsonRpcMethodsFactory,
       final KeyPair keyPair) {
@@ -78,7 +78,7 @@ public class BesuController<C> implements java.io.Closeable {
     this.keyPair = keyPair;
     this.transactionPool = transactionPool;
     this.miningCoordinator = miningCoordinator;
-    this.privacyParameters = privacyParameters;
+    this.privacyContext = privacyContext;
     this.close = close;
   }
 
@@ -123,8 +123,8 @@ public class BesuController<C> implements java.io.Closeable {
     close.run();
   }
 
-  public PrivacyParameters getPrivacyParameters() {
-    return privacyParameters;
+  public PrivacyContext getPrivacyContext() {
+    return privacyContext;
   }
 
   public Map<String, JsonRpcMethod> getAdditionalJsonRpcMethods(

@@ -108,4 +108,9 @@ abstract class BaseDelegatingBytesValue<T extends BytesValue> implements BytesVa
   public String toString() {
     return wrapped.toString();
   }
+
+  @Override
+  public String asBase64String() {
+    return wrapped.asBase64String();
+  }
 }
