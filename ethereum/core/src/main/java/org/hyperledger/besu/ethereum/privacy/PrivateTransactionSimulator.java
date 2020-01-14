@@ -76,6 +76,14 @@ public class PrivateTransactionSimulator {
 
   public Optional<PrivateTransactionProcessor.Result> process(
       final String privacyGroupId,
+      final String enclavePublicKey,
+      final CallParameter callParameter) {
+    return process(
+        privacyGroupId, enclavePublicKey, callParameter, blockchain.getChainHeadBlockNumber());
+  }
+
+  public Optional<PrivateTransactionProcessor.Result> process(
+      final String privacyGroupId,
       final String enclaveKey,
       final CallParameter callParams,
       final Hash blockHeaderHash) {

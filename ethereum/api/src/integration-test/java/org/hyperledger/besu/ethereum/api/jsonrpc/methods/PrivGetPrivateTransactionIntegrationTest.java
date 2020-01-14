@@ -92,7 +92,8 @@ public class PrivGetPrivateTransactionIntegrationTest {
     final EnclaveFactory factory = new EnclaveFactory(vertx);
     enclave = factory.createVertxEnclave(testHarness.clientUrl());
 
-    privacyController = new PrivacyController(enclave, null, null, null);
+    privacyController =
+        new PrivacyController(enclave, null, null, null, privateTransactionSimulator);
   }
 
   @AfterClass
