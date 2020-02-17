@@ -14,6 +14,7 @@
  */
 package org.hyperledger.besu.ethereum.privacy;
 
+import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
 import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
@@ -23,6 +24,7 @@ import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSchedule;
 import org.hyperledger.besu.ethereum.mainnet.ProtocolSpec;
 import org.hyperledger.besu.ethereum.privacy.storage.PrivacyGroupHeadBlockMap;
+import org.hyperledger.besu.ethereum.privacy.storage.PrivateBlockMetadata;
 import org.hyperledger.besu.ethereum.privacy.storage.PrivateStateStorage;
 import org.hyperledger.besu.ethereum.worldstate.WorldStateArchive;
 
@@ -67,45 +69,44 @@ public class PrivateStateRehydration {
 
     LOG.info("Rehydrating privacy group...");
 
-    long lastBlockNumber = -1;
+    // check if there is a privacyGroupHeadBlockMap for the first block ...
+    final boolean needEmptyPrivacyGroupHeadBlockMap = privateStateStorage
+            .getPrivacyGroupHeadBlockMap(getBlockHashForIndex(0, privateTransactionWithMetadataList))
+            .isEmpty();
+    if (needEmptyPrivacyGroupHeadBlockMap) {
+      privateStateStorage
+              .updater()
+              .putPrivacyGroupHeadBlockMap(getBlockHashForIndex(0, privateTransactionWithMetadataList), PrivacyGroupHeadBlockMap.EMPTY)
+              .commit();
+    }
+
     for (int i = 0; i < privateTransactionWithMetadataList.size(); i++) {
       // find out which block this transaction is in
-      Hash blockhash = getBlockHashForIndex(i, privateTransactionWithMetadataList);
+      final Hash blockHash = getBlockHashForIndex(i, privateTransactionWithMetadataList);
 
-      //      // create a list with all the private transactions from
-      // privateTransactionWithMetadataList
-      //      // that are in this block
-      //      List<Hash> pmtHashesForTheNewGroupInThisBlock = new ArrayList<>();
-      //      pmtHashesForTheNewGroupInThisBlock.add(
-      //          privateTransactionWithMetadataList
-      //              .get(i)
-      //              .getPrivateTransactionMetadata()
-      //              .getPrivacyMarkerTransactionHash());
-      //      if (i < privateTransactionWithMetadataList.size() - 1) {
-      //        while (blockhash.equals(getBlockHashForIndex(i + 1,
-      // privateTransactionWithMetadataList))) {
-      //          i++;
-      //          pmtHashesForTheNewGroupInThisBlock.add(
-      //              privateTransactionWithMetadataList
-      //                  .get(i)
-      //                  .getPrivateTransactionMetadata()
-      //                  .getPrivacyMarkerTransactionHash());
-      //        }
-      //      }
+      // if there are multiple pmts in the list we can increment our index i. At the end of the while loop i will be the index of the last PMT (for this group) that is in this block.
+      while (i + 1 < privateTransactionWithMetadataList.size() && blockHash.equals(getBlockHashForIndex(i + 1,
+              privateTransactionWithMetadataList))) {
+        i++;
+      }
 
-      final Block block = blockchain.getBlockByHash(blockhash).orElseThrow(RuntimeException::new);
-      final Hash blockHash = block.getHash();
+      final Hash lastPmtHash = privateTransactionWithMetadataList.get(i).getPrivateTransactionMetadata().getPrivacyMarkerTransactionHash();
+      final int transactionIndexOfLastPmtInBlock = blockchain.getTransactionLocation(lastPmtHash).orElseThrow().getTransactionIndex();
+
+      final Block block = blockchain.getBlockByHash(blockHash).orElseThrow(RuntimeException::new);
       final BlockHeader blockHeader = block.getHeader();
       LOG.info(
-          "Processing block {} ({}/{}), {}",
-          blockHash,
+              "Processing block {} ({}/{}), {}",
+              blockHash,
           blockHeader.getNumber(),
           chainHeadBlockNumber,
           block.getBody().getTransactions().stream()
               .map(Transaction::getHash)
               .collect(Collectors.toList()));
 
-      final List<Transaction> allTransactions = block.getBody().getTransactions();
+      final List<Transaction> allTransactionsToExecute = block.getBody().getTransactions().subList(0, transactionIndexOfLastPmtInBlock + 1);
+
+      System.out.println("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nAll Transactions to EXECUTE SIZE : " + allTransactionsToExecute.size());
 
       final ProtocolSpec<?> protocolSpec =
           protocolSchedule.getByBlockNumber(blockchain.getBlockHeader(blockHash).get().getNumber());
@@ -125,28 +126,28 @@ public class PrivateStateRehydration {
               .orElseThrow(RuntimeException::new);
 
       privateGroupRehydrationBlockProcessor.processBlock(
-          blockchain, publicWorldState, blockHeader, allTransactions, block.getBody().getOmmers());
+          blockchain, publicWorldState, blockHeader, allTransactionsToExecute, block.getBody().getOmmers());
 
-      if (lastBlockNumber == -1) {
-        lastBlockNumber = blockHeader.getNumber();
+      // check the resulting private state against the state in the meta data
+      final Hash latestStateRoot = privateStateStorage.getPrivateBlockMetadata(blockHash, privacyGroupId).orElseThrow().getLatestStateRoot();
+      if (!latestStateRoot.equals(privateTransactionWithMetadataList.get(i).getPrivateTransactionMetadata().getStateRoot())) {
+        throw new RuntimeException();
       }
 
-      long blockNumber = blockHeader.getNumber();
-      if (blockNumber - lastBlockNumber > 1) {
-        rehydratePrivacyGroupHeadBlockMap(privacyGroupId, blockchain, lastBlockNumber, blockNumber);
+      // fix the privacy group header block map for the blocks between the current block and the next block containing a pmt for this privacy group
+      if (i +1 < privateTransactionWithMetadataList.size()) {
+        rehydratePrivacyGroupHeadBlockMap(privacyGroupId, blockHash, blockchain, getBlockNumberForIndex(i, privateTransactionWithMetadataList), getBlockNumberForIndex(i+1, privateTransactionWithMetadataList));
       }
     }
-    rehydratePrivacyGroupHeadBlockMap(
-        privacyGroupId, blockchain, lastBlockNumber, chainHeadBlockNumber);
     final long rehydrationDuration = System.currentTimeMillis() - rehydrationStartTimestamp;
     LOG.info("Rehydration took {} seconds", rehydrationDuration / 1000.0);
   }
 
   protected void rehydratePrivacyGroupHeadBlockMap(
-      final Bytes32 privacyGroupId,
-      final Blockchain currentBlockchain,
-      final long from,
-      final long to) {
+          final Bytes32 privacyGroupId,
+          final Hash hashOfLastBlockWithPmt, final Blockchain currentBlockchain,
+          final long from,
+          final long to) {
     for (long j = from + 1; j < to; j++) {
       final BlockHeader theBlockHeader = currentBlockchain.getBlockHeader(j).orElseThrow();
       final PrivacyGroupHeadBlockMap thePrivacyGroupHeadBlockMap =
@@ -154,23 +155,26 @@ public class PrivateStateRehydration {
               .getPrivacyGroupHeadBlockMap(theBlockHeader.getHash())
               .orElse(PrivacyGroupHeadBlockMap.EMPTY);
       final PrivateStateStorage.Updater privateStateUpdater = privateStateStorage.updater();
-      thePrivacyGroupHeadBlockMap.put(
-          Bytes32.wrap(privacyGroupId), currentBlockchain.getBlockHeader(from).get().getHash());
+      thePrivacyGroupHeadBlockMap.put(privacyGroupId, hashOfLastBlockWithPmt);
       privateStateUpdater.putPrivacyGroupHeadBlockMap(
           theBlockHeader.getHash(), new PrivacyGroupHeadBlockMap(thePrivacyGroupHeadBlockMap));
       privateStateUpdater.commit();
     }
   }
 
+  private long getBlockNumberForIndex(final int index, final List<PrivateTransactionWithMetadata> privateTransactionWithMetadataList) {
+    return blockchain.getBlockHeader(getBlockHashForIndex(index, privateTransactionWithMetadataList)).orElseThrow().getNumber();
+  }
+
   private Hash getBlockHashForIndex(
-      final int i, final List<PrivateTransactionWithMetadata> privateTransactionWithMetadataList) {
+      final int index, final List<PrivateTransactionWithMetadata> privateTransactionWithMetadataList) {
     return blockchain
         .getTransactionLocation(
             privateTransactionWithMetadataList
-                .get(i)
+                .get(index)
                 .getPrivateTransactionMetadata()
                 .getPrivacyMarkerTransactionHash())
-        .get()
+        .orElseThrow()
         .getBlockHash();
   }
 }
