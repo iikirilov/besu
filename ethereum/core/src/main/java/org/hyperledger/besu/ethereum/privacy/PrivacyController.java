@@ -297,6 +297,7 @@ public class PrivacyController {
     privateTransaction.writeTo(rlpOutput);
     process.ifPresent(
         result -> {
+          LOG.info("Writing version: {}", result.getOutput().toHexString());
           if (!result.getOutput().toHexString().equals("0x")) {
             rlpOutput.writeBytes(result.getOutput());
           }

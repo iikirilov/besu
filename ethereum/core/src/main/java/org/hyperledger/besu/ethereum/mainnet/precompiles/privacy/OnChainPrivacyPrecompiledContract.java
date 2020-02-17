@@ -147,15 +147,18 @@ public class OnChainPrivacyPrecompiledContract extends AbstractPrecompiledContra
     if (!bytesValueRLPInput.isEndOfCurrentList()) {
       versionOptional = Optional.of(bytesValueRLPInput.readBytes32());
     } else {
-      versionOptional = Optional.empty();
+      versionOptional = Optional.of(Bytes32.ZERO);
     }
     bytesValueRLPInput.leaveList();
 
     final WorldUpdater publicWorldState = messageFrame.getWorldState();
 
-    // TODO sort out the exception being thrown here
-    final Bytes32 privacyGroupId =
-        Bytes32.wrap(privateTransaction.getPrivacyGroupId().orElseThrow(RuntimeException::new));
+    final Optional<Bytes> maybeGroupId = privateTransaction.getPrivacyGroupId();
+    if (maybeGroupId.isEmpty()) {
+      return Bytes.EMPTY;
+    }
+
+    final Bytes32 privacyGroupId = Bytes32.wrap(maybeGroupId.get());
 
     LOG.trace(
         "Processing private transaction {} in privacy group {}",
@@ -175,50 +178,19 @@ public class OnChainPrivacyPrecompiledContract extends AbstractPrecompiledContra
 
     final WorldUpdater privateWorldStateUpdater = disposablePrivateState.updater();
 
-    if (lastRootHash.equals(EMPTY_ROOT_HASH)) {
-      // inject management
-      final DefaultEvmAccount managementPrecompile =
-          privateWorldStateUpdater.createAccount(Address.DEFAULT_PRIVACY_MANAGEMENT);
-      final MutableAccount mutableManagementPrecompiled = managementPrecompile.getMutable();
-      // this is the code for the simple management contract
-      mutableManagementPrecompiled.setCode(OnChainGroupManagement.DEFAULT_GROUP_MANAGEMENT_CODE);
-
-      // inject proxy
-      final DefaultEvmAccount proxyPrecompile =
-          privateWorldStateUpdater.createAccount(Address.PRIVACY_PROXY);
-      final MutableAccount mutableProxyPrecompiled = proxyPrecompile.getMutable();
-      // this is the code for the proxy contract
-      mutableProxyPrecompiled.setCode(OnChainGroupManagement.DEFAULT_PROXY_PRECOMPILED_CODE);
-      // manually set the management contract address so the proxy can trust it
-      mutableProxyPrecompiled.setStorageValue(
-          UInt256.ZERO, UInt256.fromBytes(Bytes32.leftPad(Address.DEFAULT_PRIVACY_MANAGEMENT)));
-
-      privateWorldStateUpdater.commit();
-      disposablePrivateState.persist();
-    }
-
-    // We need the "lock status" of the group for every single transaction but we don't want this
-    // call to affect the state
-    // privateTransactionProcessor.processTransaction(...) commits the state if the process was
-    // successful before it returns
-    final MutableWorldState canExecutePrivateState =
-        privateWorldStateArchive.getMutable(disposablePrivateState.rootHash()).get();
-    final WorldUpdater canExecuteUpdater = canExecutePrivateState.updater();
+    maybeInjectDefaultManagementAndProxy(
+        lastRootHash, disposablePrivateState, privateWorldStateUpdater);
 
     final PrivateTransactionProcessor.Result canExecuteResult =
-        privateTransactionProcessor.processTransaction(
-            currentBlockchain,
-            publicWorldState,
-            canExecuteUpdater,
+        checkCanExecute(
+            messageFrame,
             currentBlockHeader,
-            buildSimulationTransaction(
-                privacyGroupId,
-                privateWorldStateUpdater,
-                OnChainGroupManagement.CAN_EXECUTE_METHOD_SIGNATURE),
-            messageFrame.getMiningBeneficiary(),
-            new DebugOperationTracer(TraceOptions.DEFAULT),
-            messageFrame.getBlockHashLookup(),
-            privacyGroupId);
+            publicWorldState,
+            privacyGroupId,
+            currentBlockchain,
+            disposablePrivateState,
+            privateWorldStateUpdater,
+            OnChainGroupManagement.CAN_EXECUTE_METHOD_SIGNATURE);
 
     if (privateTransaction.getPayload().toHexString().startsWith("0xf744b089")
         && !canExecuteResult.getOutput().toHexString().endsWith("0")) {
@@ -238,40 +210,15 @@ public class OnChainPrivacyPrecompiledContract extends AbstractPrecompiledContra
       return Bytes.EMPTY;
     }
 
-    // We need the "version" of the group for every single transaction but we don't want this
-    // call to affect the state
-    // privateTransactionProcessor.processTransaction(...) commits the state if the process was
-    // successful before it returns
-    final MutableWorldState getVersionState =
-        privateWorldStateArchive.getMutable(disposablePrivateState.rootHash()).get();
-    final WorldUpdater getVersionUpdater = getVersionState.updater();
-
-    final PrivateTransactionProcessor.Result getVersionResult =
-        privateTransactionProcessor.processTransaction(
-            currentBlockchain,
-            publicWorldState,
-            getVersionUpdater,
-            currentBlockHeader,
-            buildSimulationTransaction(
-                privacyGroupId,
-                privateWorldStateUpdater,
-                OnChainGroupManagement.GET_VERSION_METHOD_SIGNATURE),
-            messageFrame.getMiningBeneficiary(),
-            new DebugOperationTracer(TraceOptions.DEFAULT),
-            messageFrame.getBlockHashLookup(),
-            privacyGroupId);
-
-    if (versionOptional.isPresent()) {
-      if (!versionOptional.get().equals(getVersionResult.getOutput())) {
-        LOG.info(
-            "Privacy Group {} version mismatch for commitment {}: expecting {} but got {}",
-            privacyGroupId.toBase64String(),
-            messageFrame.getTransactionHash(),
-            getVersionResult.getOutput(),
-            versionOptional.get());
-        return Bytes.EMPTY;
-      }
-    }
+    if (!onChainVersionMatches(
+        messageFrame,
+        currentBlockHeader,
+        versionOptional,
+        publicWorldState,
+        privacyGroupId,
+        currentBlockchain,
+        disposablePrivateState,
+        privateWorldStateUpdater)) return Bytes.EMPTY;
 
     final PrivateTransactionProcessor.Result result =
         privateTransactionProcessor.processTransaction(
@@ -306,6 +253,101 @@ public class OnChainPrivacyPrecompiledContract extends AbstractPrecompiledContra
     }
 
     return result.getOutput();
+  }
+
+  protected PrivateTransactionProcessor.Result checkCanExecute(
+      final MessageFrame messageFrame,
+      final ProcessableBlockHeader currentBlockHeader,
+      final WorldUpdater publicWorldState,
+      final Bytes32 privacyGroupId,
+      final Blockchain currentBlockchain,
+      final MutableWorldState disposablePrivateState,
+      final WorldUpdater privateWorldStateUpdater,
+      final Bytes canExecuteMethodSignature) {
+    // We need the "lock status" of the group for every single transaction but we don't want this
+    // call to affect the state
+    // privateTransactionProcessor.processTransaction(...) commits the state if the process was
+    // successful before it returns
+    final MutableWorldState canExecutePrivateState =
+        privateWorldStateArchive.getMutable(disposablePrivateState.rootHash()).get();
+    final WorldUpdater canExecuteUpdater = canExecutePrivateState.updater();
+
+    return privateTransactionProcessor.processTransaction(
+        currentBlockchain,
+        publicWorldState,
+        canExecuteUpdater,
+        currentBlockHeader,
+        buildSimulationTransaction(
+            privacyGroupId, privateWorldStateUpdater, canExecuteMethodSignature),
+        messageFrame.getMiningBeneficiary(),
+        new DebugOperationTracer(TraceOptions.DEFAULT),
+        messageFrame.getBlockHashLookup(),
+        privacyGroupId);
+  }
+
+  protected void maybeInjectDefaultManagementAndProxy(
+      final Hash lastRootHash,
+      final MutableWorldState disposablePrivateState,
+      final WorldUpdater privateWorldStateUpdater) {
+    if (lastRootHash.equals(EMPTY_ROOT_HASH)) {
+      // inject management
+      final DefaultEvmAccount managementPrecompile =
+          privateWorldStateUpdater.createAccount(Address.DEFAULT_PRIVACY_MANAGEMENT);
+      final MutableAccount mutableManagementPrecompiled = managementPrecompile.getMutable();
+      // this is the code for the simple management contract
+      mutableManagementPrecompiled.setCode(OnChainGroupManagement.DEFAULT_GROUP_MANAGEMENT_CODE);
+
+      // inject proxy
+      final DefaultEvmAccount proxyPrecompile =
+          privateWorldStateUpdater.createAccount(Address.PRIVACY_PROXY);
+      final MutableAccount mutableProxyPrecompiled = proxyPrecompile.getMutable();
+      // this is the code for the proxy contract
+      mutableProxyPrecompiled.setCode(OnChainGroupManagement.DEFAULT_PROXY_PRECOMPILED_CODE);
+      // manually set the management contract address so the proxy can trust it
+      mutableProxyPrecompiled.setStorageValue(
+          UInt256.ZERO, UInt256.fromBytes(Bytes32.leftPad(Address.DEFAULT_PRIVACY_MANAGEMENT)));
+
+      privateWorldStateUpdater.commit();
+      disposablePrivateState.persist();
+    }
+  }
+
+  protected boolean onChainVersionMatches(
+      final MessageFrame messageFrame,
+      final ProcessableBlockHeader currentBlockHeader,
+      final Optional<Bytes32> versionOptional,
+      final WorldUpdater publicWorldState,
+      final Bytes32 privacyGroupId,
+      final Blockchain currentBlockchain,
+      final MutableWorldState disposablePrivateState,
+      final WorldUpdater privateWorldStateUpdater) {
+    // We need the "version" of the group for every single transaction but we don't want this
+    // call to affect the state
+    // privateTransactionProcessor.processTransaction(...) commits the state if the process was
+    // successful before it returns
+    final PrivateTransactionProcessor.Result getVersionResult =
+        checkCanExecute(
+            messageFrame,
+            currentBlockHeader,
+            publicWorldState,
+            privacyGroupId,
+            currentBlockchain,
+            disposablePrivateState,
+            privateWorldStateUpdater,
+            OnChainGroupManagement.GET_VERSION_METHOD_SIGNATURE);
+
+    if (versionOptional.isPresent()) {
+      if (versionOptional.get().equals(getVersionResult.getOutput())) {
+        return true;
+      }
+      LOG.info(
+              "Privacy Group {} version mismatch for commitment {}: expecting {} but got {}",
+              privacyGroupId.toBase64String(),
+              messageFrame.getTransactionHash(),
+              getVersionResult.getOutput(),
+              versionOptional.get());
+    }
+    return false;
   }
 
   protected void persistePrivateState(
