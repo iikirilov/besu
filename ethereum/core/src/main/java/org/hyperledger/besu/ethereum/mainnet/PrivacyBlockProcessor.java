@@ -20,6 +20,7 @@ import org.hyperledger.besu.enclave.types.ReceiveResponse;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
 import org.hyperledger.besu.ethereum.core.Address;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
+import org.hyperledger.besu.ethereum.core.Hash;
 import org.hyperledger.besu.ethereum.core.MutableWorldState;
 import org.hyperledger.besu.ethereum.core.Transaction;
 import org.hyperledger.besu.ethereum.privacy.PrivateStateRehydration;
@@ -42,17 +43,20 @@ public class PrivacyBlockProcessor implements BlockProcessor {
   private final ProtocolSchedule<?> protocolSchedule;
   private final Enclave enclave;
   private final PrivateStateStorage privateStateStorage;
+  private final WorldStateArchive privateWorldStateArchive;
   private WorldStateArchive publicWorldStateArchive;
 
   public <C> PrivacyBlockProcessor(
       final AbstractBlockProcessor blockProcessor,
       final ProtocolSchedule<C> protocolSchedule,
       final Enclave enclave,
-      final PrivateStateStorage privateStateStorage) {
+      final PrivateStateStorage privateStateStorage,
+      final WorldStateArchive privateWorldStateArchive) {
     this.blockProcessor = blockProcessor;
     this.protocolSchedule = protocolSchedule;
     this.enclave = enclave;
     this.privateStateStorage = privateStateStorage;
+    this.privateWorldStateArchive = privateWorldStateArchive;
   }
 
   public void setPublicWorldStateArchive(final WorldStateArchive publicWorldStateArchive) {
@@ -67,14 +71,10 @@ public class PrivacyBlockProcessor implements BlockProcessor {
       final List<Transaction> transactions,
       final List<BlockHeader> ommers) {
     final PrivacyGroupHeadBlockMap privacyGroupHeadBlockHash =
-        new PrivacyGroupHeadBlockMap(
-            privateStateStorage
-                .getPrivacyGroupHeadBlockMap(blockHeader.getParentHash())
-                .orElse(PrivacyGroupHeadBlockMap.EMPTY));
-    privateStateStorage
-        .updater()
-        .putPrivacyGroupHeadBlockMap(blockHeader.getHash(), privacyGroupHeadBlockHash)
-        .commit();
+            new PrivacyGroupHeadBlockMap(
+                    privateStateStorage
+                            .getPrivacyGroupHeadBlockMap(blockHeader.getParentHash())
+                            .orElse(PrivacyGroupHeadBlockMap.EMPTY));
     transactions.stream()
         .filter(
             t ->
@@ -102,7 +102,8 @@ public class PrivacyBlockProcessor implements BlockProcessor {
                           privateStateStorage,
                           blockchain,
                           protocolSchedule,
-                          publicWorldStateArchive);
+                          publicWorldStateArchive,
+                          privateWorldStateArchive);
                   privateStateRehydration.rehydrate(privateTransactionWithMetadataList);
                   privateStateStorage.updater().putAddDataKey(privacyGroupId, addKey).commit();
                 }
@@ -111,7 +112,36 @@ public class PrivacyBlockProcessor implements BlockProcessor {
                 // we were not being added
               }
             });
+    final PrivacyGroupHeadBlockMap privacyGroupHeadBlockHash1 =
+            new PrivacyGroupHeadBlockMap(
+                    privateStateStorage
+                            .getPrivacyGroupHeadBlockMap(blockHeader.getParentHash())
+                            .orElse(PrivacyGroupHeadBlockMap.EMPTY));
+    privateStateStorage
+            .updater()
+            .putPrivacyGroupHeadBlockMap(blockHeader.getHash(), privacyGroupHeadBlockHash1)
+            .commit();
     return blockProcessor.processBlock(blockchain, worldState, blockHeader, transactions, ommers);
+  }
+
+  protected void rehydratePrivacyGroupHeadBlockMap(
+      final Bytes32 privacyGroupId,
+      final Hash hashOfLastBlockWithPmt,
+      final Blockchain currentBlockchain,
+      final long from,
+      final long to) {
+    for (long j = from + 1; j < to; j++) {
+      final BlockHeader theBlockHeader = currentBlockchain.getBlockHeader(j).orElseThrow();
+      final PrivacyGroupHeadBlockMap thePrivacyGroupHeadBlockMap =
+          privateStateStorage
+              .getPrivacyGroupHeadBlockMap(theBlockHeader.getHash())
+              .orElse(PrivacyGroupHeadBlockMap.EMPTY);
+      final PrivateStateStorage.Updater privateStateUpdater = privateStateStorage.updater();
+      thePrivacyGroupHeadBlockMap.put(privacyGroupId, hashOfLastBlockWithPmt);
+      privateStateUpdater.putPrivacyGroupHeadBlockMap(
+          theBlockHeader.getHash(), new PrivacyGroupHeadBlockMap(thePrivacyGroupHeadBlockMap));
+      privateStateUpdater.commit();
+    }
   }
 
   private List<PrivateTransactionWithMetadata> deserializeAddToGroupPayload(

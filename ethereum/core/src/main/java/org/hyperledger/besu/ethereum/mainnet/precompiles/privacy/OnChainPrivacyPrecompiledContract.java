@@ -168,10 +168,12 @@ public class OnChainPrivacyPrecompiledContract extends AbstractPrecompiledContra
     final PrivacyGroupHeadBlockMap privacyGroupHeadBlockMap =
         privateStateStorage.getPrivacyGroupHeadBlockMap(currentBlockHash).orElseThrow();
 
-    final Blockchain currentBlockchain = messageFrame.getBlockchain();
+    final Blockchain blockchain = messageFrame.getBlockchain();
 
     final Hash lastRootHash =
         privateStateRootResolver.resolveLastStateRoot(privacyGroupId, currentBlockHash);
+
+    LOG.info("Last root hash: {}", lastRootHash.toHexString());
 
     final MutableWorldState disposablePrivateState =
         privateWorldStateArchive.getMutable(lastRootHash).get();
@@ -187,7 +189,7 @@ public class OnChainPrivacyPrecompiledContract extends AbstractPrecompiledContra
             currentBlockHeader,
             publicWorldState,
             privacyGroupId,
-            currentBlockchain,
+            blockchain,
             disposablePrivateState,
             privateWorldStateUpdater,
             OnChainGroupManagement.CAN_EXECUTE_METHOD_SIGNATURE);
@@ -216,13 +218,15 @@ public class OnChainPrivacyPrecompiledContract extends AbstractPrecompiledContra
         versionOptional,
         publicWorldState,
         privacyGroupId,
-        currentBlockchain,
+        blockchain,
         disposablePrivateState,
         privateWorldStateUpdater)) return Bytes.EMPTY;
 
+    LOG.info("Pre-precess root hash: {} for tx {}", disposablePrivateState.rootHash(), privateTransaction.getHash());
+
     final PrivateTransactionProcessor.Result result =
         privateTransactionProcessor.processTransaction(
-            currentBlockchain,
+            blockchain,
             publicWorldState,
             privateWorldStateUpdater,
             currentBlockHeader,
@@ -231,6 +235,9 @@ public class OnChainPrivacyPrecompiledContract extends AbstractPrecompiledContra
             new DebugOperationTracer(TraceOptions.DEFAULT),
             messageFrame.getBlockHashLookup(),
             privacyGroupId);
+
+    LOG.info("Post-precess root hash: {}", disposablePrivateState.rootHash());
+
 
     if (result.isInvalid() || !result.isSuccessful()) {
       LOG.error(
@@ -241,7 +248,7 @@ public class OnChainPrivacyPrecompiledContract extends AbstractPrecompiledContra
     }
 
     if (messageFrame.isPersistingState()) {
-      persistePrivateState(
+      persistPrivateState(
           messageFrame.getTransactionHash(),
           currentBlockHash,
           privateTransaction,
@@ -341,16 +348,16 @@ public class OnChainPrivacyPrecompiledContract extends AbstractPrecompiledContra
         return true;
       }
       LOG.info(
-              "Privacy Group {} version mismatch for commitment {}: expecting {} but got {}",
-              privacyGroupId.toBase64String(),
-              messageFrame.getTransactionHash(),
-              getVersionResult.getOutput(),
-              versionOptional.get());
+          "Privacy Group {} version mismatch for commitment {}: expecting {} but got {}",
+          privacyGroupId.toBase64String(),
+          messageFrame.getTransactionHash(),
+          getVersionResult.getOutput(),
+          versionOptional.get());
     }
     return false;
   }
 
-  protected void persistePrivateState(
+  protected void persistPrivateState(
       final Hash commitmentHash,
       final Hash currentBlockHash,
       final PrivateTransaction privateTransaction,

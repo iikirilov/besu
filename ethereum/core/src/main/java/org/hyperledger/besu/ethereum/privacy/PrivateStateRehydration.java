@@ -14,8 +14,8 @@
  */
 package org.hyperledger.besu.ethereum.privacy;
 
-import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.ethereum.chain.Blockchain;
+import org.hyperledger.besu.ethereum.chain.TransactionLocation;
 import org.hyperledger.besu.ethereum.core.Block;
 import org.hyperledger.besu.ethereum.core.BlockHeader;
 import org.hyperledger.besu.ethereum.core.Hash;
@@ -27,12 +27,15 @@ import org.hyperledger.besu.ethereum.privacy.storage.PrivacyGroupHeadBlockMap;
 import org.hyperledger.besu.ethereum.privacy.storage.PrivateStateStorage;
 import org.hyperledger.besu.ethereum.worldstate.WorldStateArchive;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
 
 public class PrivateStateRehydration {
@@ -43,31 +46,31 @@ public class PrivateStateRehydration {
   private final Blockchain blockchain;
   private final ProtocolSchedule<?> protocolSchedule;
   private final WorldStateArchive publicWorldStateArchive;
+  private final WorldStateArchive privateWorldStateArchive;
 
   public PrivateStateRehydration(
       final PrivateStateStorage privateStateStorage,
       final Blockchain blockchain,
       final ProtocolSchedule<?> protocolSchedule,
-      final WorldStateArchive publicWorldStateArchive) {
+      final WorldStateArchive publicWorldStateArchive,
+      final WorldStateArchive privateWorldStateArchive) {
     this.privateStateStorage = privateStateStorage;
     this.blockchain = blockchain;
     this.protocolSchedule = protocolSchedule;
     this.publicWorldStateArchive = publicWorldStateArchive;
+    this.privateWorldStateArchive = privateWorldStateArchive;
   }
 
   public void rehydrate(
       final List<PrivateTransactionWithMetadata> privateTransactionWithMetadataList) {
     final long rehydrationStartTimestamp = System.currentTimeMillis();
     final long chainHeadBlockNumber = blockchain.getChainHeadBlockNumber();
-    final Optional<Bytes> maybeGroupId = privateTransactionWithMetadataList
-            .get(0)
-            .getPrivateTransaction()
-            .getPrivacyGroupId();
+    final Optional<Bytes> maybeGroupId =
+        privateTransactionWithMetadataList.get(0).getPrivateTransaction().getPrivacyGroupId();
     if (maybeGroupId.isEmpty()) {
       return;
     }
-    final Bytes32 privacyGroupId =
-        Bytes32.wrap(maybeGroupId.get());
+    final Bytes32 privacyGroupId = Bytes32.wrap(maybeGroupId.get());
 
     LOG.info("Rehydrating privacy group...");
 
@@ -102,8 +105,14 @@ public class PrivateStateRehydration {
               .get(i)
               .getPrivateTransactionMetadata()
               .getPrivacyMarkerTransactionHash();
+
+      final Optional<TransactionLocation> transactionLocationOfLastPmtInBlock =
+          blockchain.getTransactionLocation(lastPmtHash);
+      if (transactionLocationOfLastPmtInBlock.isEmpty()) {
+        return;
+      }
       final int transactionIndexOfLastPmtInBlock =
-          blockchain.getTransactionLocation(lastPmtHash).orElseThrow().getTransactionIndex();
+          transactionLocationOfLastPmtInBlock.get().getTransactionIndex();
 
       final Block block = blockchain.getBlockByHash(blockHash).orElseThrow(RuntimeException::new);
       final BlockHeader blockHeader = block.getHeader();
@@ -128,6 +137,7 @@ public class PrivateStateRehydration {
       final PrivateGroupRehydrationBlockProcessor privateGroupRehydrationBlockProcessor =
           new PrivateGroupRehydrationBlockProcessor(
               protocolSpec.getTransactionProcessor(),
+              protocolSpec.getPrivateTransactionProcessor(),
               protocolSpec.getTransactionReceiptFactory(),
               protocolSpec.getBlockReward(),
               protocolSpec.getMiningBeneficiaryCalculator(),
@@ -140,11 +150,26 @@ public class PrivateStateRehydration {
               .flatMap(publicWorldStateArchive::getMutable)
               .orElseThrow(RuntimeException::new);
 
+      // build the map to be used by the privacy precompile to ge the private transactions and
+      // metadata inside the precompile
+      final LinkedHashMap<Hash, PrivateTransaction> enclaveMap = new LinkedHashMap<>();
+      for (int j = 0; j < privateTransactionWithMetadataList.size(); j++) {
+        final PrivateTransactionWithMetadata transactionWithMetadata =
+            privateTransactionWithMetadataList.get(j);
+        enclaveMap.put(
+            transactionWithMetadata
+                .getPrivateTransactionMetadata()
+                .getPrivacyMarkerTransactionHash(),
+            transactionWithMetadata.getPrivateTransaction());
+      }
+
       privateGroupRehydrationBlockProcessor.processBlock(
           blockchain,
           publicWorldState,
-          blockHeader,
-          allTransactionsToExecute,
+          privateWorldStateArchive,
+          privateStateStorage,
+          block,
+          enclaveMap,
           block.getBody().getOmmers());
 
       // check the resulting private state against the state in the meta data
@@ -158,7 +183,8 @@ public class PrivateStateRehydration {
               .get(i)
               .getPrivateTransactionMetadata()
               .getStateRoot())) {
-        throw new RuntimeException();
+        System.out.println("FAIL");
+//        throw new RuntimeException();
       }
 
       // fix the privacy group header block map for the blocks between the current block and the
@@ -170,6 +196,13 @@ public class PrivateStateRehydration {
             blockchain,
             getBlockNumberForIndex(i, privateTransactionWithMetadataList),
             getBlockNumberForIndex(i + 1, privateTransactionWithMetadataList));
+      } else {
+        rehydratePrivacyGroupHeadBlockMap(
+            privacyGroupId,
+            blockHash,
+            blockchain,
+            getBlockNumberForIndex(i, privateTransactionWithMetadataList),
+            blockchain.getChainHeadBlockNumber() + 1);
       }
     }
     final long rehydrationDuration = System.currentTimeMillis() - rehydrationStartTimestamp;

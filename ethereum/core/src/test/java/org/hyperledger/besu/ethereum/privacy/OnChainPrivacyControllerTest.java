@@ -105,7 +105,7 @@ public class OnChainPrivacyControllerTest {
           Restriction.RESTRICTED);
 
   private static final PrivateTransactionMetadata PRIVATE_TRANSACTION_METADATA =
-      new PrivateTransactionMetadata(Hash.ZERO, Hash.ZERO);
+      new PrivateTransactionMetadata(Hash.ZERO, Hash.ZERO, publicStateHash);
   private static final PrivateTransactionWithMetadata PRIVATE_TRANSACTION_WITH_METADATA =
       new PrivateTransactionWithMetadata(VALID_PRIVATE_TRANSACTION, PRIVATE_TRANSACTION_METADATA);
 
@@ -137,7 +137,8 @@ public class OnChainPrivacyControllerTest {
 
     final List<PrivateTransactionWithMetadata> privateTransactionWithMetadataList =
         onChainPrivacyController.retrievePrivateTransactions(
-            singletonList(new PrivateTransactionMetadata(Hash.ZERO, Hash.ZERO)), "");
+            singletonList(new PrivateTransactionMetadata(Hash.ZERO, Hash.ZERO, publicStateHash)),
+            "");
 
     assertThat(privateTransactionWithMetadataList.size()).isEqualTo(1);
     assertThat(privateTransactionWithMetadataList.get(0))
@@ -212,7 +213,8 @@ public class OnChainPrivacyControllerTest {
         .thenReturn(
             Optional.of(
                 new PrivateBlockMetadata(
-                    singletonList(new PrivateTransactionMetadata(Hash.ZERO, Hash.ZERO)))));
+                    singletonList(
+                        new PrivateTransactionMetadata(Hash.ZERO, Hash.ZERO, publicStateHash)))));
     when(blockchain.getBlockHeader(any(Hash.class)))
         .thenReturn(buildBlockHeaderWithParentHash(null));
     final List<PrivateTransactionMetadata> privateTransactionMetadataList =
@@ -238,7 +240,8 @@ public class OnChainPrivacyControllerTest {
     final Optional<PrivateBlockMetadata> privateBlockMetadata =
         Optional.of(
             new PrivateBlockMetadata(
-                singletonList(new PrivateTransactionMetadata(Hash.ZERO, Hash.ZERO))));
+                singletonList(
+                    new PrivateTransactionMetadata(Hash.ZERO, Hash.ZERO, publicStateHash))));
     when(privateStateStorage.getPrivacyGroupHeadBlockMap(any(Hash.class)))
         .thenReturn(privacyGroupHeadBlockMap, privacyGroupHeadBlockMap, Optional.empty());
     when(privateStateStorage.getPrivateBlockMetadata(any(Bytes32.class), any(Bytes32.class)))

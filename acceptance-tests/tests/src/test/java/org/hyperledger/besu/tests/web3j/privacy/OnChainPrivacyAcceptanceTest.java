@@ -77,7 +77,7 @@ public class OnChainPrivacyAcceptanceTest extends PrivacyAcceptanceTestBase {
 
     bob.verify(privateTransactionVerifier.validOnChainPrivacyGroupExists(expectedGroup));
 
-    final String getParticipantsCallHash=
+    final String getParticipantsCallHash =
         alice.execute(
             privateContractTransactions.callOnChainPermissioningSmartContract(
                 Address.PRIVACY_PROXY.toHexString(),
@@ -112,11 +112,11 @@ public class OnChainPrivacyAcceptanceTest extends PrivacyAcceptanceTestBase {
 
     alice.verify(
         privateTransactionVerifier.validPrivateTransactionReceipt(
-                getParticipantsCallHash, expectedReceipt));
+            getParticipantsCallHash, expectedReceipt));
 
     bob.verify(
         privateTransactionVerifier.validPrivateTransactionReceipt(
-                getParticipantsCallHash, expectedReceipt));
+            getParticipantsCallHash, expectedReceipt));
   }
 
   @Test

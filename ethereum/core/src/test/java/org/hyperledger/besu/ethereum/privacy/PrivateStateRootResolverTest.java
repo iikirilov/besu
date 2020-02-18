@@ -106,7 +106,7 @@ public class PrivateStateRootResolverTest {
         new PrivateBlockMetadata(
             Collections.singletonList(
                 new PrivateTransactionMetadata(
-                    BLOCK_GENERATOR.transaction().getHash(), pmt1StateHash))));
+                    BLOCK_GENERATOR.transaction().getHash(), pmt1StateHash, publicStateHash))));
     updater.putPrivacyGroupHeadBlockMap(
         BLOCKCHAIN.getChainHeadHash(),
         new PrivacyGroupHeadBlockMap(
@@ -130,14 +130,14 @@ public class PrivateStateRootResolverTest {
         new PrivateBlockMetadata(
             Collections.singletonList(
                 new PrivateTransactionMetadata(
-                    BLOCK_GENERATOR.transaction().getHash(), pmt1StateHash))));
+                    BLOCK_GENERATOR.transaction().getHash(), pmt1StateHash, publicStateHash))));
     updater.putPrivateBlockMetadata(
         BLOCKCHAIN.getBlockByNumber(16).get().getHash(),
         Bytes32.wrap(failingPrivacyGroupId),
         new PrivateBlockMetadata(
             Collections.singletonList(
                 new PrivateTransactionMetadata(
-                    BLOCK_GENERATOR.transaction().getHash(), pmt2StateHash))));
+                    BLOCK_GENERATOR.transaction().getHash(), pmt2StateHash, publicStateHash))));
     updater.putPrivacyGroupHeadBlockMap(
         BLOCKCHAIN.getChainHeadHash(),
         new PrivacyGroupHeadBlockMap(
@@ -161,9 +161,9 @@ public class PrivateStateRootResolverTest {
         new PrivateBlockMetadata(
             Arrays.asList(
                 new PrivateTransactionMetadata(
-                    BLOCK_GENERATOR.transaction().getHash(), pmt1StateHash),
+                    BLOCK_GENERATOR.transaction().getHash(), pmt1StateHash, publicStateHash),
                 new PrivateTransactionMetadata(
-                    BLOCK_GENERATOR.transaction().getHash(), pmt2StateHash))));
+                    BLOCK_GENERATOR.transaction().getHash(), pmt2StateHash, publicStateHash))));
     updater.putPrivacyGroupHeadBlockMap(
         BLOCKCHAIN.getChainHeadHash(),
         new PrivacyGroupHeadBlockMap(
