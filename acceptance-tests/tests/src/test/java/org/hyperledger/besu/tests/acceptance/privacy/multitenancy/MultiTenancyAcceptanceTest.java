@@ -99,9 +99,9 @@ public class MultiTenancyAcceptanceTest extends AcceptanceTestBase {
     final PrivateTransaction validSignedPrivateTransaction =
         getValidSignedPrivateTransaction(senderAddress);
 
-    receiveEnclaveStub(getRLPOutput(validSignedPrivateTransaction));
+    receiveEnclaveStub(validSignedPrivateTransaction);
     retrievePrivacyGroupEnclaveStub();
-    sendEnclaveStub("testKey");
+    sendEnclaveStub("sgFkVOyFndZe/5SAZJO5UYbrl7pezHetveriBBWWnE8=");
 
     final Hash transactionHash =
         node.execute(
@@ -149,8 +149,8 @@ public class MultiTenancyAcceptanceTest extends AcceptanceTestBase {
         getValidSignedPrivateTransaction(senderAddress);
 
     retrievePrivacyGroupEnclaveStub();
-    sendEnclaveStub("testKey");
-    receiveEnclaveStub(getRLPOutput(validSignedPrivateTransaction));
+    sendEnclaveStub("sgFkVOyFndZe/5SAZJO5UYbrl7pezHetveriBBWWnE8=");
+    receiveEnclaveStub(validSignedPrivateTransaction);
 
     node.verify(
         priv.eeaSendRawTransaction(
@@ -166,8 +166,8 @@ public class MultiTenancyAcceptanceTest extends AcceptanceTestBase {
     final BytesValueRLPOutput rlpOutput = getRLPOutput(validSignedPrivateTransaction);
 
     retrievePrivacyGroupEnclaveStub();
-    sendEnclaveStub("testKey");
-    receiveEnclaveStub(rlpOutput);
+    sendEnclaveStub("sgFkVOyFndZe/5SAZJO5UYbrl7pezHetveriBBWWnE8=");
+    receiveEnclaveStub(validSignedPrivateTransaction);
 
     node.verify(priv.getTransactionCount(accountAddress, PRIVACY_GROUP_ID, 0));
     final Hash transactionReceipt =
@@ -180,9 +180,7 @@ public class MultiTenancyAcceptanceTest extends AcceptanceTestBase {
   @Test
   public void privDistributeRawTransactionSuccessShouldReturnEnclaveKey()
       throws JsonProcessingException {
-    final String enclaveResponseKey = "TestKey";
-    final String enclaveResponseKeyBase64 =
-        Base64.encode(Bytes.wrap(enclaveResponseKey.getBytes(UTF_8)));
+    final String enclaveResponseKeyBase64 = "sgFkVOyFndZe/5SAZJO5UYbrl7pezHetveriBBWWnE8=";
     final String enclaveResponseKeyBytes =
         Bytes.wrap(Bytes.fromBase64String(enclaveResponseKeyBase64)).toString();
 
@@ -203,8 +201,8 @@ public class MultiTenancyAcceptanceTest extends AcceptanceTestBase {
     final BytesValueRLPOutput rlpOutput = getRLPOutput(validSignedPrivateTransaction);
 
     retrievePrivacyGroupEnclaveStub();
-    sendEnclaveStub("testKey");
-    receiveEnclaveStub(rlpOutput);
+    sendEnclaveStub("sgFkVOyFndZe/5SAZJO5UYbrl7pezHetveriBBWWnE8=");
+    receiveEnclaveStub(validSignedPrivateTransaction);
 
     final Hash transactionReceipt =
         node.execute(privacyTransactions.sendRawTransaction(rlpOutput.encoded().toHexString()));
@@ -224,8 +222,8 @@ public class MultiTenancyAcceptanceTest extends AcceptanceTestBase {
         List.of(testPrivacyGroup(emptyList(), PrivacyGroup.Type.LEGACY));
 
     retrievePrivacyGroupEnclaveStub();
-    sendEnclaveStub("testKey");
-    receiveEnclaveStub(rlpOutput);
+    sendEnclaveStub("sgFkVOyFndZe/5SAZJO5UYbrl7pezHetveriBBWWnE8=");
+    receiveEnclaveStub(validSignedPrivateTransaction);
     findPrivacyGroupEnclaveStub(groupMembership);
 
     node.verify(priv.getTransactionCount(accountAddress, PRIVACY_GROUP_ID, 0));
@@ -268,8 +266,8 @@ public class MultiTenancyAcceptanceTest extends AcceptanceTestBase {
     stubFor(post("/send").willReturn(ok(sendResponse)));
   }
 
-  private void receiveEnclaveStub(final BytesValueRLPOutput rlpOutput)
-      throws JsonProcessingException {
+  private void receiveEnclaveStub(final PrivateTransaction privTx) throws JsonProcessingException {
+    final BytesValueRLPOutput rlpOutput = getRLPOutputForReceiveResponse(privTx);
     final String senderKey = "QTFhVnRNeExDVUhtQlZIWG9aenpCZ1BiVy93ajVheERwVzlYOGw5MVNHbz0=";
     final String receiveResponse =
         mapper.writeValueAsString(
@@ -278,9 +276,16 @@ public class MultiTenancyAcceptanceTest extends AcceptanceTestBase {
     stubFor(post("/receive").willReturn(ok(receiveResponse)));
   }
 
-  private BytesValueRLPOutput getRLPOutput(final PrivateTransaction validSignedPrivateTransaction) {
+  private BytesValueRLPOutput getRLPOutputForReceiveResponse(
+      final PrivateTransaction privateTransaction) {
     final BytesValueRLPOutput bvrlpo = new BytesValueRLPOutput();
-    validSignedPrivateTransaction.writeTo(bvrlpo);
+    privateTransaction.writeTo(bvrlpo);
+    return bvrlpo;
+  }
+
+  private BytesValueRLPOutput getRLPOutput(final PrivateTransaction privateTransaction) {
+    final BytesValueRLPOutput bvrlpo = new BytesValueRLPOutput();
+    privateTransaction.writeTo(bvrlpo);
     return bvrlpo;
   }
 

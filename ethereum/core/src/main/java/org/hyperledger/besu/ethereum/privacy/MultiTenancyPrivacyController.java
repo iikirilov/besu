@@ -91,6 +91,15 @@ public class MultiTenancyPrivacyController implements PrivacyController {
   }
 
   @Override
+  public Transaction createPrivacyMarkerTransaction(
+      final String transactionEnclaveKey,
+      final PrivateTransaction privateTransaction,
+      final Address privacyPrecompileAddress) {
+    return privacyController.createPrivacyMarkerTransaction(
+        transactionEnclaveKey, privateTransaction, privacyPrecompileAddress);
+  }
+
+  @Override
   public ValidationResult<TransactionInvalidReason> validatePrivateTransaction(
       final PrivateTransaction privateTransaction, final String enclavePublicKey) {
     return privacyController.validatePrivateTransaction(privateTransaction, enclavePublicKey);
@@ -122,6 +131,27 @@ public class MultiTenancyPrivacyController implements PrivacyController {
     verifyPrivacyGroupContainsEnclavePublicKey(privacyGroupId, enclavePublicKey);
     return privacyController.simulatePrivateTransaction(
         privacyGroupId, enclavePublicKey, callParams, blockNumber);
+  }
+
+  @Override
+  public Optional<String> buildAndSendAddPayload(
+      final PrivateTransaction privateTransaction, final String enclaveKey) {
+    verifyPrivateFromMatchesEnclavePublicKey(
+        privateTransaction.getPrivateFrom().toBase64String(), enclaveKey);
+    verifyPrivacyGroupContainsEnclavePublicKey(
+        privateTransaction.getPrivacyGroupId().get().toBase64String(), enclaveKey);
+    return privacyController.buildAndSendAddPayload(privateTransaction, enclaveKey);
+  }
+
+  @Override
+  public PrivacyGroup retrievePrivacyGroup(final String privacyGroupId, final String enclaveKey) {
+    return privacyController.retrievePrivacyGroup(privacyGroupId, enclaveKey);
+  }
+
+  @Override
+  public List<PrivacyGroup> findOnChainPrivacyGroup(
+      final List<String> asList, final String enclaveKey) {
+    return privacyController.findOnChainPrivacyGroup(asList, enclaveKey);
   }
 
   private void verifyPrivateFromMatchesEnclavePublicKey(

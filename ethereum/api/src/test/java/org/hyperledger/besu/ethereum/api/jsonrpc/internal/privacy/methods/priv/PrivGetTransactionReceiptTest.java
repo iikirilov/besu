@@ -49,7 +49,7 @@ import org.hyperledger.besu.ethereum.privacy.PrivateTransaction;
 import org.hyperledger.besu.ethereum.privacy.PrivateTransactionReceipt;
 import org.hyperledger.besu.ethereum.privacy.Restriction;
 import org.hyperledger.besu.ethereum.privacy.storage.PrivateStateStorage;
-import org.hyperledger.besu.ethereum.rlp.RLP;
+import org.hyperledger.besu.ethereum.rlp.BytesValueRLPOutput;
 
 import java.math.BigInteger;
 import java.util.Base64;
@@ -72,7 +72,8 @@ public class PrivGetTransactionReceiptTest {
   @Rule public final TemporaryFolder temp = new TemporaryFolder();
 
   private static final String ENCLAVE_PUBLIC_KEY = "A1aVtMxLCUHmBVHXoZzzBgPbW/wj5axDpW9X8l91SGo=";
-  private static final Bytes ENCLAVE_KEY = Bytes.wrap("EnclaveKey".getBytes(UTF_8));
+  private static final Bytes ENCLAVE_KEY =
+      Bytes.wrap("Ko2bVqD+nNlNYL5EE7y3IdOnviftjiizpjRt+HTuFBs=".getBytes(UTF_8));
   private static final Address SENDER =
       Address.fromHexString("0xfe3b557e8fb62b89f4916b721be55ceb828dbd73");
 
@@ -117,7 +118,7 @@ public class PrivGetTransactionReceiptTest {
           .gasLimit(3000000)
           .to(Address.fromHexString("0x627306090abab3a6e1400e9345bc60c78a8bef57"))
           .value(Wei.ZERO)
-          .payload(Bytes.wrap("EnclaveKey".getBytes(UTF_8)))
+          .payload(ENCLAVE_KEY)
           .sender(SENDER)
           .chainId(BigInteger.valueOf(2018))
           .signAndBuild(KEY_PAIR);
@@ -132,7 +133,7 @@ public class PrivGetTransactionReceiptTest {
           null,
           0,
           0,
-          Hash.fromHexString("0x65348ddfe0b282c26862b4610a8c45fd8486a93ae6e2b197836c826b4b671848"),
+          Hash.fromHexString(transaction.getHash().toHexString()),
           Hash.fromHexString("0x43ef5094212ba4862d6b310a3d337c3478fdf942c5ed3f8e792ad93d6d96994d"),
           Bytes.fromHexString(
               "0x41316156744d784c4355486d425648586f5a7a7a42675062572f776a3561784470573958386c393153476f3d"),
@@ -155,12 +156,13 @@ public class PrivGetTransactionReceiptTest {
 
   @Before
   public void setUp() {
-    when(privacyController.retrieveTransaction(anyString(), any()))
-        .thenReturn(
-            new ReceiveResponse(
-                Base64.getEncoder().encode(RLP.encode(privateTransaction::writeTo).toArray()),
-                "",
-                null));
+    final BytesValueRLPOutput rlpOutput = new BytesValueRLPOutput();
+    rlpOutput.startList();
+    privateTransaction.writeTo(rlpOutput);
+    rlpOutput.endList();
+    final byte[] src = rlpOutput.encoded().toArray();
+    when(privacyController.retrieveTransaction(anyString(), anyString()))
+        .thenReturn(new ReceiveResponse(Base64.getEncoder().encode(src), "", null));
 
     when(blockchainQueries.getBlockchain()).thenReturn(blockchain);
     final TransactionLocation transactionLocation = new TransactionLocation(Hash.EMPTY, 0);
@@ -200,7 +202,9 @@ public class PrivGetTransactionReceiptTest {
         (PrivateTransactionReceiptResult) response.getResult();
 
     assertThat(result).isEqualToComparingFieldByField(expectedResult);
-    verify(privacyController).retrieveTransaction(ENCLAVE_KEY.toBase64String(), ENCLAVE_PUBLIC_KEY);
+    verify(privacyController)
+        .retrieveTransaction(
+            transaction.getPayload().slice(0, 32).toBase64String(), ENCLAVE_PUBLIC_KEY);
   }
 
   @Test

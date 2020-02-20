@@ -18,6 +18,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.logging.log4j.LogManager.getLogger;
 
 import org.hyperledger.besu.enclave.EnclaveClientException;
+import org.hyperledger.besu.enclave.types.PrivacyGroup;
 import org.hyperledger.besu.enclave.types.ReceiveResponse;
 import org.hyperledger.besu.ethereum.api.jsonrpc.JsonRpcEnclaveErrorConverter;
 import org.hyperledger.besu.ethereum.api.jsonrpc.RpcMethod;
@@ -88,24 +89,48 @@ public class PrivGetTransactionReceipt implements JsonRpcMethod {
     final Transaction pmtTransaction =
         blockBody.getTransactions().get(pmtLocation.getTransactionIndex());
 
-    final Hash blockhash = pmtLocation.getBlockHash();
-    final long blockNumber = blockchain.getBlockchain().getBlockHeader(blockhash).get().getNumber();
+    final Hash blockHash = pmtLocation.getBlockHash();
+    final long blockNumber = blockchain.getBlockchain().getBlockHeader(blockHash).get().getNumber();
 
     final PrivateTransaction privateTransaction;
     final String privacyGroupId;
     try {
       final ReceiveResponse receiveResponse =
           privacyController.retrieveTransaction(
-              pmtTransaction.getPayload().toBase64String(),
+              pmtTransaction.getPayload().slice(0, 32).toBase64String(),
               enclavePublicKeyProvider.getEnclaveKey(requestContext.getUser()));
       LOG.trace("Received private transaction information");
 
       final BytesValueRLPInput input =
           new BytesValueRLPInput(
               Bytes.fromBase64String(new String(receiveResponse.getPayload(), UTF_8)), false);
+      input.enterList();
+      if (input.nextIsList()) {
+        privateTransaction = PrivateTransaction.readFrom(input);
+        input.leaveListLenient();
+      } else {
+        input.reset();
+        privateTransaction = PrivateTransaction.readFrom(input);
+      }
 
-      privateTransaction = PrivateTransaction.readFrom(input);
-      privacyGroupId = receiveResponse.getPrivacyGroupId();
+      if (privateTransaction.getPrivacyGroupId().isPresent()) {
+        PrivacyGroup privacyGroup = null;
+        try {
+          privacyGroup =
+              privacyController.retrievePrivacyGroup(
+                  privateTransaction.getPrivacyGroupId().get().toBase64String(),
+                  enclavePublicKeyProvider.getEnclaveKey(requestContext.getUser()));
+        } catch (final EnclaveClientException e) {
+          // it is an onchain group
+        }
+        if (privacyGroup == null) {
+          privacyGroupId = privateTransaction.getPrivacyGroupId().get().toBase64String();
+        } else {
+          privacyGroupId = receiveResponse.getPrivacyGroupId();
+        }
+      } else {
+        privacyGroupId = receiveResponse.getPrivacyGroupId();
+      }
     } catch (final EnclaveClientException e) {
       return handleEnclaveException(requestContext, e);
     }
@@ -128,7 +153,7 @@ public class PrivGetTransactionReceipt implements JsonRpcMethod {
     final PrivateTransactionReceipt privateTransactioReceipt =
         privacyParameters
             .getPrivateStateStorage()
-            .getTransactionReceipt(blockhash, txHash)
+            .getTransactionReceipt(blockHash, txHash)
             .orElse(PrivateTransactionReceipt.EMPTY);
 
     LOG.trace("Processed private transaction receipt");
@@ -140,7 +165,7 @@ public class PrivGetTransactionReceipt implements JsonRpcMethod {
             privateTransaction.getTo().map(Address::toString).orElse(null),
             privateTransactioReceipt.getLogs(),
             privateTransactioReceipt.getOutput(),
-            blockhash,
+            blockHash,
             blockNumber,
             pmtLocation.getTransactionIndex(),
             pmtTransaction.getHash(),

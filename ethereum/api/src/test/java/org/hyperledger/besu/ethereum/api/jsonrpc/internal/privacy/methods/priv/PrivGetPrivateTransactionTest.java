@@ -143,7 +143,9 @@ public class PrivGetPrivateTransactionTest {
             new JsonRpcRequest("1", "priv_getPrivateTransaction", params), user);
 
     final BytesValueRLPOutput bvrlp = new BytesValueRLPOutput();
+    bvrlp.startList();
     privateTransaction.writeTo(bvrlp);
+    bvrlp.endList();
     when(privacyController.retrieveTransaction(anyString(), any()))
         .thenReturn(
             new ReceiveResponse(
@@ -180,7 +182,9 @@ public class PrivGetPrivateTransactionTest {
         new JsonRpcRequestContext(new JsonRpcRequest("1", "priv_getPrivateTransaction", params));
 
     final BytesValueRLPOutput bvrlp = new BytesValueRLPOutput();
+    bvrlp.startList();
     privateTransaction.writeTo(bvrlp);
+    bvrlp.endList();
     when(privacyController.retrieveTransaction(anyString(), any()))
         .thenReturn(
             new ReceiveResponse(
